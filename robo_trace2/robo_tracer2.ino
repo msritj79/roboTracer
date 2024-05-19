@@ -11,7 +11,7 @@
  */
 
 float Kp = 0.3;
-float Kd = 8.0;
+float Kd = 0.0;
 float pwm_max = 100;
 float pwm = 0;
 long Line_Controll_before = 0;
@@ -127,7 +127,7 @@ int MarkerCheck(void) {
     //   line_State = 2;
     //   return 2;
     } else if (line_State == 3) {
-      // line_State = 7;
+      line_State = 7;
       digitalWrite(LED_Pin,HIGH);
       return 7;
     } else if (line_State == 4) {
