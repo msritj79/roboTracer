@@ -97,7 +97,7 @@ int MarkerCheck(void) {
     //   line_State = 2;
     //   return 2;
     } else if (line_State == 3) {
-      // line_State = 7;
+      line_State = 7;
       digitalWrite(LED_Pin,HIGH);
       return 7;
     } else if (line_State == 4) {
