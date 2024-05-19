@@ -16,22 +16,22 @@ float Kd = 8.0;
 float pwm_max = 255;  //max:255
 
 //ピンの設定
-int DIR_R_Pin = D12;
-int DIR_L_Pin = D0;
-int PWM_R_Pin = D11;
-int PWM_L_Pin = D10;
+int DIR_R_PIN = D12;
+int DIR_L_PIN = D0;
+int PWM_R_PIN = D11;
+int PWM_L_PIN = D10;
 
-int SW1_Pin = D7;
-int SW2_Pin = D8;
+int SW1_PIN = D7;
+int SW2_PIN = D8;
 
-int POWER_Pin = A6;
-int LINE_L2_Pin = A5;
-int LINE_L1_Pin = A4;
-int LINE_R1_Pin = A3;
-int LINE_R2_Pin = A2;
+int POWER_PIN = A6;
+int LINE_L2_PIN = A5;
+int LINE_L1_PIN = A4;
+int LINE_R1_PIN = A3;
+int LINE_R2_PIN = A2;
 
-int LED_Pin = D13;
-int BUZZER_Pin = D2;
+int LED_PIN = D13;
+int BUZZER_PIN = D2;
 
 // 変数宣言
 long line_control;
@@ -64,13 +64,13 @@ int LINE_COLOR = 1;
 //5:マーカー未検出、クロス未検出
 //6:ダミーマーカー通過中
 //7:ゴールマーカー検出
-int line_State = 0;
+int run_state = 0;
 
 void get_AD(void) {
-  R2_Value = analogRead(LINE_R2_Pin);
-  R1_Value = analogRead(LINE_R1_Pin);
-  L1_Value = analogRead(LINE_L1_Pin);
-  L2_Value = analogRead(LINE_L2_Pin);
+  R2_Value = analogRead(LINE_R2_PIN);
+  R1_Value = analogRead(LINE_R1_PIN);
+  L1_Value = analogRead(LINE_L1_PIN);
+  L2_Value = analogRead(LINE_L2_PIN);
   ML_Value = adc_read_value(PB_1, 10);
   MR_Value = adc_read_value(PB_0, 10);
 
@@ -81,7 +81,7 @@ void get_AD(void) {
 
 void debug_AD() {
   Serial.printf("\n\r %d ML=%d,L2=%d L1=%d R1=%d,R2=%d,MR=%d",
-                line_State, ML_Value, L2_Value, L1_Value, R1_Value, R2_Value, MR_Value);
+                run_state, ML_Value, L2_Value, L1_Value, R1_Value, R2_Value, MR_Value);
 }
 
 
@@ -89,83 +89,81 @@ int MarkerCheck(void) {
   //      debug_AD();
   //if ((MR_Value > (R2_Value*0.169+2.7488+30))  && (MR_Value > 90)) { //マーカーセンサアクティブ
   if (MR_Value > 70){ //マーカーセンサアクティブ: start or goal
-    if (line_State == 0) {
-      line_State = 1;
-      digitalWrite(LED_Pin,HIGH);
+    if (run_state == 0) {
+      run_state = 1;
+      digitalWrite(LED_PIN,HIGH);
       return 1;
-    // } else if (line_State == 1) {
-    //   line_State = 2;
+    // } else if (run_state == 1) {
+    //   run_state = 2;
     //   return 2;
-    } else if (line_State == 3) {
-      line_State = 7;
-      digitalWrite(LED_Pin,HIGH);
+    } else if (run_state == 3) {
+      run_state = 7;
+      digitalWrite(LED_PIN,HIGH);
       return 7;
-    } else if (line_State == 4) {
-      line_State = 6;
+    } else if (run_state == 4) {
+      run_state = 6;
       return 6;
-    } else if (line_State == 5) {
-      line_State = 6;
+    } else if (run_state == 5) {
+      run_state = 6;
       return 6;
-    } else if(line_State == 6){
-      line_State = 6;
+    } else if(run_state == 6){
+      run_state = 6;
       return 6;      
     }
   }
   else{
     //マーカー未検出のとき
-    if (line_State == 1) {
-      line_State = 3;
+    if (run_state == 1) {
+      run_state = 3;
       return 3;
     }
 
-    if (line_State == 6) {
-      line_State = 3;
+    if (run_state == 6) {
+      run_state = 3;
       return 3;
     }
   }
 
-  
-
   //クロスライン
-  if (line_State == 3) {
+  if (run_state == 3) {
     if ((R2_Value + R1_Value + L1_Value + L2_Value) > 1300) { //クロスライン
-      line_State = 4; //クロスラインを検出
-      digitalWrite(LED_Pin,HIGH);
+      run_state = 4; //クロスラインを検出
+      digitalWrite(LED_PIN,HIGH);
       return 4;
     }
   }
-  if (line_State == 4) {
+  if (run_state == 4) {
     if ((R2_Value + R1_Value + L1_Value + L2_Value) < 1200) {
-      line_State = 5;
-      digitalWrite(LED_Pin,LOW);
+      run_state = 5;
+      digitalWrite(LED_PIN,LOW);
       return 5;
     }
   }
 
-  return line_State;
+  return run_state;
 }
 
 void setup() {
   // put your setup code here, to run once:
   //IOポート設定
-  pinMode(BUZZER_Pin, OUTPUT);
-  pinMode(LED_Pin, OUTPUT);
-  pinMode(SW1_Pin, INPUT_PULLUP);
-  pinMode(SW2_Pin, INPUT_PULLUP);
-  pinMode(DIR_R_Pin, OUTPUT);
-  pinMode(DIR_L_Pin, OUTPUT);
+  pinMode(BUZZER_PIN, OUTPUT);
+  pinMode(LED_PIN, OUTPUT);
+  pinMode(SW1_PIN, INPUT_PULLUP);
+  pinMode(SW2_PIN, INPUT_PULLUP);
+  pinMode(DIR_R_PIN, OUTPUT);
+  pinMode(DIR_L_PIN, OUTPUT);
 
   LED_DRIVE(2, 100, 100);
   Serial.begin(115200);
 
   while (1) {
-    if (digitalRead(SW2_Pin) == LOW) {
+    if (digitalRead(SW2_PIN) == LOW) {
       BUZZER_DRIVE(1, 100, 100);
       while (1) {
         get_AD();
         Serial.printf("\n\r control = %d VDD=%dmV LL2=%d LL1=%d LR1=%d LR2=%d inside_offset=%d outside_offset=%d ML=%d MR=%d xline=%d  marker_check=%d CTRL=%d",
                       (L1_Value - R1_Value - inside_offset) + 2 * (L2_Value - R2_Value - outside_offset),
-                      analogRead(POWER_Pin) * 9677 / 1000,
+                      analogRead(POWER_PIN) * 9677 / 1000,
                       L2_Value, L1_Value, R1_Value, R2_Value,
                       (L1_Value - R1_Value), (L2_Value - R2_Value),
                       adc_read_value(PB_1, 10), adc_read_value(PB_0, 10),
@@ -174,7 +172,7 @@ void setup() {
                       L1_Value - R1_Value - inside_offset + 2 * (L2_Value - R2_Value - outside_offset)
                      );
         delay(100);
-        if (digitalRead(SW2_Pin) == LOW) {
+        if (digitalRead(SW2_PIN) == LOW) {
           delay(200);
           break;
         }
@@ -182,8 +180,8 @@ void setup() {
     }
 
     //左のスイッチを押したら、走行開始
-    if (digitalRead(SW1_Pin) == LOW) {
-//      digitalWrite(LED_Pin, HIGH);
+    if (digitalRead(SW1_PIN) == LOW) {
+//      digitalWrite(LED_PIN, HIGH);
       get_AD();
       BUZZER_DRIVE(2, 70, 70);
       break;
@@ -199,13 +197,14 @@ void loop() {
   //マーカーを検出?
   if (LINE_COLOR == 1 ) {
     MarkerCheck();
-    if (line_State == 1) {
+    if (run_state == 1) {
       BUZZER_DRIVE(1, 50, 50);
-    } else if (line_State == 7) {
+    } else if (run_state == 7) {
       BUZZER_DRIVE(2, 50, 50);
       RUN_STOP();
     }
   } else {
+    // スタートでもゴールでもない、ラインから外れた時にストップさせる
     if (adc_read_value(PB_0, 10) < 30) {
       RUN_STOP();
     }
@@ -213,9 +212,10 @@ void loop() {
 
   diff_control = line_control - line_control_before;
   line_control_before = line_control;
-  //ラインセンサの値から制御量を算出する
+  //ラインセンサの値から制御量を算出する、80：ラインからのオフセット（マーカ検出の微調整のため）
   line_control = (L1_Value - R1_Value - inside_offset + 80) + 2 * (L2_Value - R2_Value - outside_offset + 80);
 
+  // スタート時の速度を抑える（急加速によ不安定になるのを防ぐため）
   if (cnt <= 200){
     pwm_max=55 + cnt*1;
     cnt++;
@@ -229,14 +229,9 @@ void loop() {
     PWM_L_Value = pwm_max;
   }
   
-
-  
-  // PWM_L_Value /= 1.35;
-  // PWM_R_Value /= 5.0/2;
-  // PWM_L_Value /= 3.32/2;
-
-  PWM_R_Value = 100*255/103;
-  PWM_L_Value = 103*255/103;
+  // 【テスト用】直線状に走らせる
+  // PWM_R_Value = 100*255/103;
+  // PWM_L_Value = 103*255/103;
   
 
   PWM_L_Value = int(PWM_L_Value);
@@ -246,34 +241,15 @@ void loop() {
   Serial.printf("\n\r PWM_L_VALUE=%d,PWM_R_VALUE=%d",
                 int(PWM_L_Value), int(PWM_R_Value));
   
-  digitalWrite(DIR_L_Pin, CW_L);//モーター前進設定
+  digitalWrite(DIR_L_PIN, CW_L);//モーター前進設定
+  digitalWrite(DIR_R_PIN, CW_R);//モーター前進設定
 
-  // PWM_L_Value = 200/1.35;
-  // PWM_R_Value = 200;
-  //左モーターPWM出力
-  // if (PWM_L_Value < 0) {
-  //   digitalWrite(DIR_L_Pin, CCW_L);//モーター後進設定
-  // } else {
-  //   digitalWrite(DIR_L_Pin, CW_L);//モーター前進設定
-  // }
-  // PWM_L_Value = abs(PWM_L_Value);
   if (PWM_L_Value > 255) {
     PWM_L_Value = 255; //モーター制御値上下ガード処理
   }
   if (PWM_L_Value <= 0) {
     PWM_L_Value = 0; //モーター制御値上下ガード処理
   }
-  analogWrite(PWM_L_Pin, PWM_L_Value);
-
-  //右モーターPWM出力
-  // if (PWM_R_Value < 0) {
-  //   digitalWrite(DIR_R_Pin, CCW_R);//モーター後進設定
-  // } else {
-  //   digitalWrite(DIR_R_Pin, CW_R);//モーター前進設定
-  // }
-  // PWM_R_Value = abs(PWM_R_Value);
-
-  digitalWrite(DIR_R_Pin, CW_R);//モーター前進設定
 
   if (PWM_R_Value > 255) {
     PWM_R_Value = 255; //モーター制御値上下ガード処理
@@ -281,7 +257,9 @@ void loop() {
   if (PWM_R_Value <= 0) {
     PWM_R_Value = 0; //モーター制御値上下ガード処理
   }
-  analogWrite(PWM_R_Pin, PWM_R_Value);
+
+  analogWrite(PWM_L_PIN, PWM_L_Value);
+  analogWrite(PWM_R_PIN, PWM_R_Value);
 
   delay(1);
 }
