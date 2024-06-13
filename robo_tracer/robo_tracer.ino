@@ -13,7 +13,8 @@
 // setting parameters
 float Kp = 0.3;
 float Kd = 8.0;
-float pwm_max = 100;  //max:255
+float pwm_max = 50;  //max:255
+int PWM_LIMIT = 100;
 
 //ピンの設定
 int DIR_R_PIN = D12;
@@ -256,15 +257,15 @@ void loop() {
   digitalWrite(DIR_L_PIN, CW_L);//モーター前進設定
   digitalWrite(DIR_R_PIN, CW_R);//モーター前進設定
 
-  if (PWM_L_Value > 255) {
+  if (PWM_L_Value > PWM_LIMIT) {
     PWM_L_Value = 255; //モーター制御値上下ガード処理
   }
   if (PWM_L_Value <= 0) {
     PWM_L_Value = 0; //モーター制御値上下ガード処理
   }
 
-  if (PWM_R_Value > 255) {
-    PWM_R_Value = 255; //モーター制御値上下ガード処理
+  if (PWM_R_Value > PWM_LIMIT) {
+    PWM_R_Value = PWM_LIMIT; //モーター制御値上下ガード処理
   }
   if (PWM_R_Value <= 0) {
     PWM_R_Value = 0; //モーター制御値上下ガード処理

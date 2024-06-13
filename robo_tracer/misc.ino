@@ -11,33 +11,33 @@
 
 void LED_DRIVE(char times, int high_ms, int low_ms) {
   for (char i = 0; i < times; i++) {
-    digitalWrite(LED_Pin, HIGH);
+    digitalWrite(LED_PIN, HIGH);
     delay(high_ms);
-    digitalWrite(LED_Pin, LOW);
+    digitalWrite(LED_PIN, LOW);
     delay(low_ms);
   }
 }
 
 void BUZZER_DRIVE(char times, int high_ms, int low_ms) {
   for (char i = 0; i < times; i++) {
-    digitalWrite(BUZZER_Pin, HIGH);   // ブザー鳴らす
+    digitalWrite(BUZZER_PIN, HIGH);   // ブザー鳴らす
     delay(100);                       // 指定時間待ち
-    digitalWrite(BUZZER_Pin, LOW);    // ブザー止める
+    digitalWrite(BUZZER_PIN, LOW);    // ブザー止める
     delay(100);                       // 指定時間待ち
   }
 }
 
 void RUN_STOP(void) {
-  digitalWrite(LED_Pin, LOW);
-  analogWrite(PWM_L_Pin, 0);
-  analogWrite(PWM_R_Pin, 0);
-  digitalWrite(BUZZER_Pin, HIGH);
+  digitalWrite(LED_PIN, LOW);
+  analogWrite(PWM_L_PIN, 0);
+  analogWrite(PWM_R_PIN, 0);
+  digitalWrite(BUZZER_PIN, HIGH);
   delay(100);
-  digitalWrite(BUZZER_Pin, LOW);
-  line_State=0;
+  digitalWrite(BUZZER_PIN, LOW);
+  run_state=0;
   while (1) {
-    if (digitalRead(SW1_Pin) == LOW) {
-//      digitalWrite(LED_Pin, HIGH);
+    if (digitalRead(SW1_PIN) == LOW) {
+//      digitalWrite(LED_PIN, HIGH);
       break;
     }
   }
