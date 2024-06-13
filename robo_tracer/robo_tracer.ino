@@ -11,8 +11,8 @@
  */
 
 // setting parameters
-float Kp = 0.3;
-float Kd = 8.0;
+float Kp = 0.8;
+float Kd = 0.0;
 float pwm_max = 50;  //max:255
 int PWM_LIMIT = 100;
 
@@ -235,11 +235,11 @@ void loop() {
   }
 
   if (line_control > 0 ){
-    PWM_L_Value = pwm_max - LINE_COLOR * line_control * Kp - diff_control * Kd ;
-    PWM_R_Value = pwm_max;
-  }else{
-    PWM_R_Value = pwm_max + LINE_COLOR * line_control * Kp + diff_control * Kd ;
     PWM_L_Value = pwm_max;
+    PWM_R_Value = pwm_max - LINE_COLOR * line_control * Kp - diff_control * Kd ;
+  }else{
+    PWM_L_Value = pwm_max + LINE_COLOR * line_control * Kp + diff_control * Kd ;
+    PWM_R_Value = pwm_max;
   }
   
   // 【テスト用】直線状に走らせる
