@@ -13,7 +13,7 @@
 // setting parameters
 float Kp = 0.3;
 float Kd = 8.0;
-float pwm_max = 255;  //max:255
+float pwm_max = 100;  //max:255
 
 //ピンの設定
 int DIR_R_PIN = D12;
@@ -74,9 +74,21 @@ void get_AD(void) {
   ML_Value = adc_read_value(PB_1, 10);
   MR_Value = adc_read_value(PB_0, 10);
 
+
+  // point1: black
+  // (L1,R1,L2,R2) = (131,133,121,45)
+
+  // point2: white
+  // (L1,R1,L2,R2) = (746,840,598,640)
+
+  // L1-R1_diff = -0.1496 * L1	+ 17.597
+  // L2-R2_diff = -0.2474 * L2	+ 105.93
+
+
+
   //床の反射率が一定ではないため、特定の箇所で調査し、平均化したオフセットを算出
-  outside_offset = R2_Value * 0.1281 - 17.245;
-  inside_offset = R2_Value * 0.1379 + 26.743;
+  outside_offset = L2_Value * (-0.2474) + 105.93;
+  inside_offset = L1_Value * (-0.1496) + 17.597;
 }
 
 void debug_AD() {
