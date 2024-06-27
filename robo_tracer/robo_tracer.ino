@@ -105,57 +105,115 @@ void debug_AD() {
 int MarkerCheck(void) {
   //      debug_AD();
   //if ((MR_Value > (R2_Value*0.169+2.7488+30))  && (MR_Value > 90)) { //マーカーセンサアクティブ
-  if (MR_Value > 70){ //マーカーセンサアクティブ: start or goal
-    if (run_state == 0) {
-      run_state = 1;
-      digitalWrite(LED_PIN,HIGH);
-      return 1;
-    // } else if (run_state == 1) {
-    //   run_state = 2;
-    //   return 2;
-    } else if (run_state == 3) {
-      run_state = 7;
-      digitalWrite(LED_PIN,HIGH);
-      return 7;
-    } else if (run_state == 4) {
-      run_state = 6;
-      return 6;
-    } else if (run_state == 5) {
-      run_state = 6;
-      return 6;
-    } else if(run_state == 6){
-      run_state = 6;
-      return 6;      
+  if (LINE_COLOR == 1 ) {
+    if (MR_Value > 70){ //マーカーセンサアクティブ: start or goal
+      if (run_state == 0) {
+        run_state = 1;
+        digitalWrite(LED_PIN,HIGH);
+        return 1;
+      // } else if (run_state == 1) {
+      //   run_state = 2;
+      //   return 2;
+      } else if (run_state == 3) {
+        run_state = 7;
+        digitalWrite(LED_PIN,HIGH);
+        return 7;
+      } else if (run_state == 4) {
+        run_state = 6;
+        return 6;
+      } else if (run_state == 5) {
+        run_state = 6;
+        return 6;
+      } else if(run_state == 6){
+        run_state = 6;
+        return 6;      
+      }
     }
-  }
-  else{
-    //マーカー未検出のとき
-    if (run_state == 1) {
-      run_state = 3;
-      return 3;
+    else{
+      //マーカー未検出のとき
+      if (run_state == 1) {
+        run_state = 3;
+        return 3;
+      }
+
+      if (run_state == 6) {
+        run_state = 3;
+        return 3;
+      }
     }
 
-    if (run_state == 6) {
-      run_state = 3;
-      return 3;
+    //クロスライン
+    if (run_state == 3) {
+      if ((R2_Value + R1_Value + L1_Value + L2_Value) > 1300) { //クロスライン
+        run_state = 4; //クロスラインを検出
+        digitalWrite(LED_PIN,HIGH);
+        return 4;
+      }
+    }
+    if (run_state == 4) {
+      if ((R2_Value + R1_Value + L1_Value + L2_Value) < 1200) {
+        run_state = 5;
+        digitalWrite(LED_PIN,LOW);
+        return 5;
+      }
     }
   }
 
-  //クロスライン
-  if (run_state == 3) {
-    if ((R2_Value + R1_Value + L1_Value + L2_Value) > 1300) { //クロスライン
-      run_state = 4; //クロスラインを検出
-      digitalWrite(LED_PIN,HIGH);
-      return 4;
+
+  if (LINE_COLOR == -1 ) {
+    if (MR_Value < 30){ //マーカーセンサアクティブ: start or goal
+      if (run_state == 0) {
+        run_state = 1;
+        digitalWrite(LED_PIN,HIGH);
+        return 1;
+      // } else if (run_state == 1) {
+      //   run_state = 2;
+      //   return 2;
+      } else if (run_state == 3) {
+        run_state = 7;
+        digitalWrite(LED_PIN,HIGH);
+        return 7;
+      } else if (run_state == 4) {
+        run_state = 6;
+        return 6;
+      } else if (run_state == 5) {
+        run_state = 6;
+        return 6;
+      } else if(run_state == 6){
+        run_state = 6;
+        return 6;      
+      }
+    }
+    else{
+      //マーカー未検出のとき
+      if (run_state == 1) {
+        run_state = 3;
+        return 3;
+      }
+
+      if (run_state == 6) {
+        run_state = 3;
+        return 3;
+      }
+    }
+
+    //クロスライン
+    if (run_state == 3) {
+      if ((R2_Value + R1_Value + L1_Value + L2_Value) > 1300) { //クロスライン
+        run_state = 4; //クロスラインを検出
+        digitalWrite(LED_PIN,HIGH);
+        return 4;
+      }
+    }
+    if (run_state == 4) {
+      if ((R2_Value + R1_Value + L1_Value + L2_Value) < 1200) {
+        run_state = 5;
+        digitalWrite(LED_PIN,LOW);
+        return 5;
+      }
     }
   }
-  if (run_state == 4) {
-    if ((R2_Value + R1_Value + L1_Value + L2_Value) < 1200) {
-      run_state = 5;
-      digitalWrite(LED_PIN,LOW);
-      return 5;
-    }
-  }
+
 
   return run_state;
 }
@@ -196,6 +254,12 @@ void setup() {
       }
     }
 
+    initialize_run_mode();
+
+  }
+}
+
+void initialize_run_mode() {
     //左のスイッチを押したら、走行開始
     if (digitalRead(SW1_PIN) == LOW) {
 //      digitalWrite(LED_PIN, HIGH);
@@ -203,30 +267,41 @@ void setup() {
       BUZZER_DRIVE(2, 70, 70);
       break;
     }
-  }
-}
 
+    if (degitalRead(SW2_PIN) == LOW) {
+      //右のスイッチを押したら、走行停止
+      RUN_STOP();
+      BUZZER_DRIVE(1, 70, 70);
+      break;
+    }
+
+}
 
 void loop() {
   // put your main code here, to run repeatedly:
 
   get_AD();
   //マーカーを検出?
-  if (LINE_COLOR == 1 ) {
-    MarkerCheck();
-    if (run_state == 1) {
-      BUZZER_DRIVE(1, 50, 50);
-    } else if (run_state == 7) {
-      BUZZER_DRIVE(2, 50, 50);
-      RUN_STOP();
-    }
-  } else {
+  MarkerCheck();
+  if (run_state == 1) {
+    BUZZER_DRIVE(1, 50, 50);
+  } else if (run_state == 7) {
+    BUZZER_DRIVE(2, 50, 50);
+    RUN_STOP();
+  }
+  if (LINE_COLOR == 1) {
     // スタートでもゴールでもない、ラインから外れた時にストップさせる
     if (adc_read_value(PB_0, 10) < 30) {
       RUN_STOP();
     }
+  }else{
+    // スタートでもゴールでもない、ラインから外れた時にストップさせる
+    if (adc_read_value(PB_0, 10) > 200) {
+      RUN_STOP();
+    }
   }
 
+  // 以下からはライントレース
   diff_control = line_control - line_control_before;
   line_control_before = line_control;
   //ラインセンサの値から制御量を算出する、80：ラインからのオフセット（マーカ検出の微調整のため）
