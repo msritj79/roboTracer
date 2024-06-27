@@ -11,10 +11,14 @@
  */
 
 // setting parameters
-float Kp = 0.8;
+float Kp = 5.0;
 float Kd = 0.0;
-float pwm_max = 50;  //max:255
-int PWM_LIMIT = 100;
+float PWM_MAX = 150; //max:255
+float PWM_INIT = 20;
+float pwm_max = PWM_INIT;
+float SLOW_TIME = 200;
+// int PWM_LIMIT = 100;
+
 
 //ピンの設定
 int DIR_R_PIN = D12;
@@ -56,7 +60,7 @@ float PWM_R_Value = 80;
 float PWM_L_Value = 80;
 
 //ラインが白の場合:1、ラインが黒の場合-1
-int LINE_COLOR = 1;
+int LINE_COLOR = -1;
 
 //0:マーカー未検出、クロス未検出
 //1:Startマーカーを検出
@@ -65,7 +69,7 @@ int LINE_COLOR = 1;
 //5:マーカー未検出、クロス未検出
 //6:ダミーマーカー通過中
 //7:ゴールマーカー検出
-int run_state = 0;
+int run_state = 3;
 
 void get_AD(void) {
   R2_Value = analogRead(LINE_R2_PIN);
@@ -226,22 +230,36 @@ void loop() {
   diff_control = line_control - line_control_before;
   line_control_before = line_control;
   //ラインセンサの値から制御量を算出する、80：ラインからのオフセット（マーカ検出の微調整のため）
-  line_control = (L1_Value - R1_Value - inside_offset + 80) + 2 * (L2_Value - R2_Value - outside_offset + 80);
+  // line_control = (L1_Value - R1_Value - inside_offset + 80) + 2 * (L2_Value - R2_Value - outside_offset + 80);
+  line_control = (L1_Value - R1_Value - inside_offset) + 2 * (L2_Value - R2_Value - outside_offset);
 
-  // スタート時の速度を抑える（急加速によ不安定になるのを防ぐため）
-  if (cnt <= 200){
-    pwm_max=55 + cnt*1;
+
+  // スタート時の速度を抑える（急加速により不安定になるのを防ぐため）
+  // SLOW_TIME秒後に、pwm_max = PWM_MAXとなるように計算する
+  if (cnt <= SLOW_TIME){
+    pwm_max = PWM_INIT + (PWM_MAX - PWM_INIT) / SLOW_TIME * cnt;
     cnt++;
   }
 
-  if (line_control > 0 ){
-    PWM_L_Value = pwm_max;
-    PWM_R_Value = pwm_max - LINE_COLOR * line_control * Kp - diff_control * Kd ;
-  }else{
-    PWM_L_Value = pwm_max + LINE_COLOR * line_control * Kp + diff_control * Kd ;
-    PWM_R_Value = pwm_max;
+  if (LINE_COLOR == 1){
+    if (line_control > 0 ){
+      PWM_L_Value = pwm_max - LINE_COLOR * (line_control * Kp - diff_control * Kd);
+      PWM_R_Value = pwm_max;
+    }else{
+      PWM_L_Value = pwm_max;
+      PWM_R_Value = pwm_max + LINE_COLOR * (line_control * Kp - diff_control * Kd);
+    }
   }
-  
+  else if (LINE_COLOR == -1){
+    if (line_control > 0 ){
+      PWM_L_Value = pwm_max;
+      PWM_R_Value = pwm_max + LINE_COLOR * (line_control * Kp - diff_control * Kd);
+    }else{
+      PWM_L_Value = pwm_max - LINE_COLOR * (line_control * Kp - diff_control * Kd);
+      PWM_R_Value = pwm_max;
+    }
+  }
+
   // 【テスト用】直線状に走らせる
   // PWM_R_Value = 100*255/103;
   // PWM_L_Value = 103*255/103;
@@ -257,16 +275,16 @@ void loop() {
   digitalWrite(DIR_L_PIN, CW_L);//モーター前進設定
   digitalWrite(DIR_R_PIN, CW_R);//モーター前進設定
 
-  if (PWM_L_Value > PWM_LIMIT) {
-    PWM_L_Value = 255; //モーター制御値上下ガード処理
-  }
+  // if (PWM_L_Value > PWM_LIMIT) {
+  //   PWM_L_Value = PWM_LIMIT; //モーター制御値上下ガード処理
+  // }
   if (PWM_L_Value <= 0) {
     PWM_L_Value = 0; //モーター制御値上下ガード処理
   }
 
-  if (PWM_R_Value > PWM_LIMIT) {
-    PWM_R_Value = PWM_LIMIT; //モーター制御値上下ガード処理
-  }
+  // if (PWM_R_Value > PWM_LIMIT) {
+  //   PWM_R_Value = PWM_LIMIT; //モーター制御値上下ガード処理
+  // }
   if (PWM_R_Value <= 0) {
     PWM_R_Value = 0; //モーター制御値上下ガード処理
   }
