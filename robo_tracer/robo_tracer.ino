@@ -30,11 +30,15 @@ const int CROSS_THRESHOLD = 1000; // クロスライン検出（R2+R1+L1+L2）�
 const int COURSE_OUT_THRESHOLD = 300; // L1+R1 < thresholdのとき白ラインから外れてコースアウトと判断する
                                       // (白線,黒線)=(300,1400)
 
+float k_reduce = 0.2;
+float l_reduce = 0.8;
 
 long encoderSections[MAX_SECTIONS][2]; // エンコーダ値を保存する配列（最大10区間と仮定）
 int sectionIndex = 0; // 現在の区間のインデックス
 bool markerDetected = false; // 前回のマーカー検出状態
 
+float right_to_left_ratio_list[MAX_SECTIONS];
+float reduction_ratio_list[MAX_SECTIONS];
 
 //ピンの設定
 int DIR_R_PIN = D12;
@@ -99,6 +103,7 @@ volatile long leftEncoderCount = 0;
 volatile long rightEncoderCount = 0;
 
 
+
 void setup() {
   // put your setup code here, to run once:
   //IOポート設定
@@ -134,7 +139,7 @@ void print_param(){
         //               right_marker_check(),
         //               L1_Value - R1_Value - inside_offset + 2 * (L2_Value - R2_Value - outside_offset)
         //              );
-        line_control_i = (L1_Value - R1_Value - inside_offset) + 2 * (L2_Value - R2_Value - outside_offset);
+        int line_control_i = (L1_Value - R1_Value - inside_offset) + 2 * (L2_Value - R2_Value - outside_offset);
         right_marker_check();
 
         Serial.printf("\n\r line_control = %d L2=%d L1=%d R1=%d R2=%d ML=%d MR=%d \n\r L1-R1-inside_offset=%d L2-R2-outside_offset=%d \n\r L2+L1+R1+R2=%d L1+R1=%d \n\r run_state=%d",
@@ -145,7 +150,7 @@ void print_param(){
                       L2_Value - R2_Value - outside_offset,   //０になることが理想
                       L2_Value + L1_Value + R1_Value + R2_Value,
                       L1_Value + R1_Value,
-                      run_state,
+                      run_state
                       );
 
         Serial.printf("\n\r left_encorder_cnt=%d right_encorder_cnt=%d", leftEncoderCount, rightEncoderCount);
@@ -170,6 +175,7 @@ void initialize_run_mode() {
         digitalWrite(LED_PIN, HIGH);
         get_AD();
         BUZZER_DRIVE(2, 70, 70);
+        calc_ratio();
         break;
       }
 
@@ -344,7 +350,32 @@ int right_marker_check(void) {
   return run_state;
 }
 
+void calc_ratio(){
+  // 初期化
+  for (int i=0; i<MAX_SECTIONS; i++){
+    right_to_left_ratio_list[i] = 1;
+    reduction_ratio_list[i] = 1;
+  }
+
+
+  // ２回目以降の走行では前回走行で測定したエンコーダの値から左右のPWM速度比を設定しておく。そのためのパラメータをここでは計算しておき、trace_lineで使用する
+  for (int section_i=0; section_i<MAX_SECTIONS; section_i++){
+    if (encoderSections[section_i][0] != 0){
+      right_to_left_ratio_list[section_i] = (float)encoderSections[section_i][1] / encoderSections[section_i][0];
+
+      // カーブが急な時は最大速度を落とすための減速比を計算
+      // 左右の速度比と減速比の対応関係を適当に一次関数で表現した
+      if (right_to_left_ratio_list[section_i] < 1){
+        reduction_ratio_list[section_i] = k_reduce * right_to_left_ratio_list[section_i] + l_reduce;
+      }else{
+        reduction_ratio_list[section_i] = k_reduce / right_to_left_ratio_list[section_i] + l_reduce;
+      }
+    }
+  }
+}
+
 void left_marker_check(){
+
   if (LINE_COLOR == 1){
     // マーカーが検出されていない状態から検出された状態に変わったとき
     if (ML_Value > ML_THRESHOLD && !markerDetected){
@@ -397,6 +428,9 @@ void detect_course_out(){
 }
 
 void trace_line(){
+  float pwm_max_L;
+  float pwm_max_R;
+
   diff_control = line_control - line_control_before;
   line_control_before = line_control;
   //ラインセンサの値から制御量を算出する、80：ラインから横方向へのオフセット（マーカ検出の微調整のため）
@@ -410,22 +444,31 @@ void trace_line(){
     cnt++;
   }
 
+  // カーブの曲率によって決まる減速比に応じて最大速度を変更
+  pwm_max *= reduction_ratio_list[sectionIndex];
+  // カーブの曲率によって決まる左右比に応じて最大速度を変更
+  if (right_to_left_ratio_list[sectionIndex] < 1){
+    pwm_max_R = pwm_max_L * right_to_left_ratio_list[sectionIndex];
+  }else{  
+    pwm_max_L = pwm_max_R * right_to_left_ratio_list[sectionIndex];
+  }
+
   if (LINE_COLOR == 1){
     if (line_control > 0 ){
-      PWM_L_Value = pwm_max - LINE_COLOR * (line_control * Kp - diff_control * Kd);
-      PWM_R_Value = pwm_max;
+      PWM_L_Value = pwm_max_L - LINE_COLOR * (line_control * Kp - diff_control * Kd);
+      PWM_R_Value = pwm_max_R;
     }else{
-      PWM_L_Value = pwm_max;
-      PWM_R_Value = pwm_max + LINE_COLOR * (line_control * Kp - diff_control * Kd);
+      PWM_L_Value = pwm_max_L;
+      PWM_R_Value = pwm_max_R + LINE_COLOR * (line_control * Kp - diff_control * Kd);
     }
   }
   else if (LINE_COLOR == -1){
     if (line_control > 0 ){
-      PWM_L_Value = pwm_max;
-      PWM_R_Value = pwm_max + LINE_COLOR * (line_control * Kp - diff_control * Kd);
+      PWM_L_Value = pwm_max_L;
+      PWM_R_Value = pwm_max_R + LINE_COLOR * (line_control * Kp - diff_control * Kd);
     }else{
-      PWM_L_Value = pwm_max - LINE_COLOR * (line_control * Kp - diff_control * Kd);
-      PWM_R_Value = pwm_max;
+      PWM_L_Value = pwm_max_L - LINE_COLOR * (line_control * Kp - diff_control * Kd);
+      PWM_R_Value = pwm_max_R;
     }
   }
 
