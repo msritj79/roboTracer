@@ -11,9 +11,10 @@
  */
 
 // setting parameters
-float Kp = 5.0;
-float Kd = 0.0;
-float PWM_MAX = 150; //max:255
+float Kp = 0.2;
+float Kd = 0.2;
+float PWM_MAX = 140; //max:255
+float PWM_MAX_FIRST = 80; //1回目走行でのPWM_MAX（コース形状計測用）
 float PWM_INIT = 20;
 float pwm_max = PWM_INIT;
 float SLOW_TIME = 200;
@@ -61,6 +62,8 @@ float PWM_L_Value = 80;
 
 //ラインが白の場合:1、ラインが黒の場合-1
 int LINE_COLOR = -1;
+
+int course_out_count = 0;
 
 //0:マーカー未検出、クロス未検出
 //1:Startマーカーを検出
@@ -231,6 +234,12 @@ void setup() {
   LED_DRIVE(2, 100, 100);
   Serial.begin(115200);
 
+  // print_param();
+  
+  initialize_run_mode();
+}
+
+void print_param(){
   while (1) {
     if (digitalRead(SW2_PIN) == LOW) {
       BUZZER_DRIVE(1, 100, 100);
@@ -253,26 +262,30 @@ void setup() {
         }
       }
     }
-
-    initialize_run_mode();
-
   }
+
+
 }
 
 void initialize_run_mode() {
-    //左のスイッチを押したら、走行開始
-    if (digitalRead(SW1_PIN) == LOW) {
-//      digitalWrite(LED_PIN, HIGH);
-      get_AD();
-      BUZZER_DRIVE(2, 70, 70);
-      break;
-    }
+    while(1){
+      //左のスイッチを押したら、走行開始（２回目）
+      if (digitalRead(SW1_PIN) == LOW) {
+        digitalWrite(LED_PIN, HIGH);
+        get_AD();
+        BUZZER_DRIVE(2, 70, 70);
+        break;
+      }
 
-    if (degitalRead(SW2_PIN) == LOW) {
-      //右のスイッチを押したら、走行停止
-      RUN_STOP();
-      BUZZER_DRIVE(1, 70, 70);
-      break;
+      //右のスイッチを押したら、計測モードで走行開始（1回目）
+      if (digitalRead(SW2_PIN) == LOW) {
+        PWM_MAX = PWM_MAX_FIRST; //ゆっくり走る
+        digitalWrite(LED_PIN, HIGH);
+        get_AD();
+        BUZZER_DRIVE(4, 70, 70); //４回ブザーを鳴らす
+        break;
+      }
+
     }
 
 }
@@ -288,17 +301,21 @@ void loop() {
   } else if (run_state == 7) {
     BUZZER_DRIVE(2, 50, 50);
     RUN_STOP();
+    initialize_run_mode();
   }
   if (LINE_COLOR == 1) {
     // スタートでもゴールでもない、ラインから外れた時にストップさせる
-    if (adc_read_value(PB_0, 10) < 30) {
-      RUN_STOP();
+    if (L1_Value + R1_Value < 300) {
+      course_out_count++;
     }
   }else{
     // スタートでもゴールでもない、ラインから外れた時にストップさせる
-    if (adc_read_value(PB_0, 10) > 200) {
-      RUN_STOP();
+    if (L1_Value + R1_Value > 1400) {
+      course_out_count++;
     }
+  }
+  if (course_out_count > 180){
+    RUN_STOP();
   }
 
   // 以下からはライントレース
