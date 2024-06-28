@@ -9,6 +9,7 @@
  *     https://www.apache.org/licenses/LICENSE-2.0
  *     
  */
+#define MAX_SECTIONS 100  // 最大区間数を定義
 
 // setting parameters
 float Kp = 0.2;
@@ -19,6 +20,11 @@ float PWM_INIT = 20;
 float pwm_max = PWM_INIT;
 float SLOW_TIME = 200;
 // int PWM_LIMIT = 100;
+
+const int ML_THRESHOLD = 100; // マーカーの閾値
+long encoderSections[MAX_SECTIONS][2]; // エンコーダ値を保存する配列（最大10区間と仮定）
+int sectionIndex = 0; // 現在の区間のインデックス
+bool markerDetected = false; // 前回のマーカー検出状態
 
 
 //ピンの設定
@@ -38,6 +44,14 @@ int LINE_R2_PIN = A2;
 
 int LED_PIN = D13;
 int BUZZER_PIN = D2;
+
+
+// エンコーダーのピン
+int leftEncoderAPin = D1; // LHallA
+int leftEncoderBPin = D9; // LHallB
+int rightEncoderAPin = A1; // RHallA
+int rightEncoderBPin = A0; // RHallB 
+
 
 // 変数宣言
 long line_control;
@@ -74,6 +88,36 @@ int course_out_count = 0;
 //7:ゴールマーカー検出
 int run_state = 3;
 
+// エンコーダーの値を保存するための変数
+volatile long leftEncoderCount = 0;
+volatile long rightEncoderCount = 0;
+
+
+// 左エンコーダーの割り込み処理関数
+void handleLeftEncoder() {
+  if (digitalRead(leftEncoderBPin) == HIGH) {
+    leftEncoderCount++;
+    Serial.print("Left Encoder Count: ");
+    Serial.println(leftEncoderCount);
+  } else {
+    // leftEncoderCount--;
+    // Serial.print("\n Left -");
+  }
+}
+
+// 右エンコーダーの割り込み処理関数
+void handleRightEncoder() {
+  if (digitalRead(rightEncoderBPin) == HIGH) {
+    rightEncoderCount++;
+    Serial.print("Right Encoder Count: ");
+    Serial.println(rightEncoderCount);
+  } else {
+    // rightEncoderCount--;
+    // Serial.print("\n Right -");
+  }
+}
+
+
 void get_AD(void) {
   R2_Value = analogRead(LINE_R2_PIN);
   R1_Value = analogRead(LINE_R1_PIN);
@@ -95,8 +139,8 @@ void get_AD(void) {
 
 
   //床の反射率が一定ではないため、特定の箇所で調査し、平均化したオフセットを算出
-  outside_offset = L2_Value * (-0.2474) + 105.93;
-  inside_offset = L1_Value * (-0.1496) + 17.597;
+  outside_offset = L2_Value * (-0.1579) + 113.47;
+  inside_offset = L1_Value * (-0.1352) + 15.276;
 }
 
 void debug_AD() {
@@ -232,7 +276,7 @@ void setup() {
   pinMode(DIR_L_PIN, OUTPUT);
 
   LED_DRIVE(2, 100, 100);
-  Serial.begin(115200);
+  Serial.begin(9600);
 
   // print_param();
   
@@ -290,12 +334,35 @@ void initialize_run_mode() {
 
 }
 
+void left_marker_check(){
+  // マーカーが検出されていない状態から検出された状態に変わったとき
+  if (ML_Value > ML_THRESHOLD && !markerDetected) {
+    encoderSections[sectionIndex][0] = leftEncoderCount;
+    encoderSections[sectionIndex][1] = rightEncoderCount;
+    sectionIndex++;
+    
+    // エンコーダをリフレッシュ
+    leftEncoderCount = 0;
+    rightEncoderCount = 0;
+    
+    markerDetected = true; // マーカーが検出されたことを記録
+  } else if (ML_Value <= ML_THRESHOLD) {
+    markerDetected = false; // マーカーが検出されていないことを記録
+  }
+}
+
+
 void loop() {
   // put your main code here, to run repeatedly:
+
+  attachInterrupt(digitalPinToInterrupt(leftEncoderAPin), handleLeftEncoder, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(rightEncoderAPin), handleRightEncoder, CHANGE);
+
 
   get_AD();
   //マーカーを検出?
   MarkerCheck();
+  left_marker_check();
   if (run_state == 1) {
     BUZZER_DRIVE(1, 50, 50);
   } else if (run_state == 7) {
@@ -361,8 +428,8 @@ void loop() {
   PWM_R_Value = int(PWM_R_Value);
 
 
-  Serial.printf("\n\r PWM_L_VALUE=%d,PWM_R_VALUE=%d",
-                int(PWM_L_Value), int(PWM_R_Value));
+  // Serial.printf("\n\r PWM_L_VALUE=%d,PWM_R_VALUE=%d",
+  //               int(PWM_L_Value), int(PWM_R_Value));
   
   digitalWrite(DIR_L_PIN, CW_L);//モーター前進設定
   digitalWrite(DIR_R_PIN, CW_R);//モーター前進設定
