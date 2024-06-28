@@ -14,14 +14,23 @@
 // setting parameters
 float Kp = 0.2;
 float Kd = 0.2;
-float PWM_MAX = 140; //max:255
-float PWM_MAX_FIRST = 80; //1回目走行でのPWM_MAX（コース形状計測用）
-float PWM_INIT = 20;
+int PWM_MAX = 140; //max:255
+const int PWM_MIN = 20;
+const int PWM_MAX_FIRST = 80; //1回目走行でのPWM_MAX（コース形状計測用）
+const int PWM_INIT = 20;
+const int SLOW_TIME = 200;
 float pwm_max = PWM_INIT;
-float SLOW_TIME = 200;
-// int PWM_LIMIT = 100;
 
-const int ML_THRESHOLD = 100; // マーカーの閾値
+//ラインが白の場合:1、ラインが黒の場合-1
+const int LINE_COLOR = -1;
+
+const int ML_THRESHOLD = 200; // section用 左マーカーの閾値 (白線,黒線)=(70,200)
+const int MR_THRESHOLD = 200;  // run_state用 右マーカーの閾値 (白線,黒線)=(70,200)
+const int CROSS_THRESHOLD = 1000; // クロスライン検出（R2+R1+L1+L2）の閾値 (白線,黒線)=(1300,1000)
+const int COURSE_OUT_THRESHOLD = 300; // L1+R1 < thresholdのとき白ラインから外れてコースアウトと判断する
+                                      // (白線,黒線)=(300,1400)
+
+
 long encoderSections[MAX_SECTIONS][2]; // エンコーダ値を保存する配列（最大10区間と仮定）
 int sectionIndex = 0; // 現在の区間のインデックス
 bool markerDetected = false; // 前回のマーカー検出状態
@@ -74,9 +83,6 @@ int CCW_L = LOW;
 float PWM_R_Value = 80;
 float PWM_L_Value = 80;
 
-//ラインが白の場合:1、ラインが黒の場合-1
-int LINE_COLOR = -1;
-
 int course_out_count = 0;
 
 //0:マーカー未検出、クロス未検出
@@ -92,178 +98,6 @@ int run_state = 3;
 volatile long leftEncoderCount = 0;
 volatile long rightEncoderCount = 0;
 
-
-// 左エンコーダーの割り込み処理関数
-void handleLeftEncoder() {
-  if (digitalRead(leftEncoderBPin) == HIGH) {
-    leftEncoderCount++;
-    Serial.print("Left Encoder Count: ");
-    Serial.println(leftEncoderCount);
-  } else {
-    // leftEncoderCount--;
-    // Serial.print("\n Left -");
-  }
-}
-
-// 右エンコーダーの割り込み処理関数
-void handleRightEncoder() {
-  if (digitalRead(rightEncoderBPin) == HIGH) {
-    rightEncoderCount++;
-    Serial.print("Right Encoder Count: ");
-    Serial.println(rightEncoderCount);
-  } else {
-    // rightEncoderCount--;
-    // Serial.print("\n Right -");
-  }
-}
-
-
-void get_AD(void) {
-  R2_Value = analogRead(LINE_R2_PIN);
-  R1_Value = analogRead(LINE_R1_PIN);
-  L1_Value = analogRead(LINE_L1_PIN);
-  L2_Value = analogRead(LINE_L2_PIN);
-  ML_Value = adc_read_value(PB_1, 10);
-  MR_Value = adc_read_value(PB_0, 10);
-
-
-  // point1: black
-  // (L1,R1,L2,R2) = (131,133,121,45)
-
-  // point2: white
-  // (L1,R1,L2,R2) = (746,840,598,640)
-
-  // L1-R1_diff = -0.1496 * L1	+ 17.597
-  // L2-R2_diff = -0.2474 * L2	+ 105.93
-
-
-
-  //床の反射率が一定ではないため、特定の箇所で調査し、平均化したオフセットを算出
-  outside_offset = L2_Value * (-0.1579) + 113.47;
-  inside_offset = L1_Value * (-0.1352) + 15.276;
-}
-
-void debug_AD() {
-  Serial.printf("\n\r %d ML=%d,L2=%d L1=%d R1=%d,R2=%d,MR=%d",
-                run_state, ML_Value, L2_Value, L1_Value, R1_Value, R2_Value, MR_Value);
-}
-
-
-int MarkerCheck(void) {
-  //      debug_AD();
-  //if ((MR_Value > (R2_Value*0.169+2.7488+30))  && (MR_Value > 90)) { //マーカーセンサアクティブ
-  if (LINE_COLOR == 1 ) {
-    if (MR_Value > 70){ //マーカーセンサアクティブ: start or goal
-      if (run_state == 0) {
-        run_state = 1;
-        digitalWrite(LED_PIN,HIGH);
-        return 1;
-      // } else if (run_state == 1) {
-      //   run_state = 2;
-      //   return 2;
-      } else if (run_state == 3) {
-        run_state = 7;
-        digitalWrite(LED_PIN,HIGH);
-        return 7;
-      } else if (run_state == 4) {
-        run_state = 6;
-        return 6;
-      } else if (run_state == 5) {
-        run_state = 6;
-        return 6;
-      } else if(run_state == 6){
-        run_state = 6;
-        return 6;      
-      }
-    }
-    else{
-      //マーカー未検出のとき
-      if (run_state == 1) {
-        run_state = 3;
-        return 3;
-      }
-
-      if (run_state == 6) {
-        run_state = 3;
-        return 3;
-      }
-    }
-
-    //クロスライン
-    if (run_state == 3) {
-      if ((R2_Value + R1_Value + L1_Value + L2_Value) > 1300) { //クロスライン
-        run_state = 4; //クロスラインを検出
-        digitalWrite(LED_PIN,HIGH);
-        return 4;
-      }
-    }
-    if (run_state == 4) {
-      if ((R2_Value + R1_Value + L1_Value + L2_Value) < 1200) {
-        run_state = 5;
-        digitalWrite(LED_PIN,LOW);
-        return 5;
-      }
-    }
-  }
-
-
-  if (LINE_COLOR == -1 ) {
-    if (MR_Value < 30){ //マーカーセンサアクティブ: start or goal
-      if (run_state == 0) {
-        run_state = 1;
-        digitalWrite(LED_PIN,HIGH);
-        return 1;
-      // } else if (run_state == 1) {
-      //   run_state = 2;
-      //   return 2;
-      } else if (run_state == 3) {
-        run_state = 7;
-        digitalWrite(LED_PIN,HIGH);
-        return 7;
-      } else if (run_state == 4) {
-        run_state = 6;
-        return 6;
-      } else if (run_state == 5) {
-        run_state = 6;
-        return 6;
-      } else if(run_state == 6){
-        run_state = 6;
-        return 6;      
-      }
-    }
-    else{
-      //マーカー未検出のとき
-      if (run_state == 1) {
-        run_state = 3;
-        return 3;
-      }
-
-      if (run_state == 6) {
-        run_state = 3;
-        return 3;
-      }
-    }
-
-    //クロスライン
-    if (run_state == 3) {
-      if ((R2_Value + R1_Value + L1_Value + L2_Value) > 1300) { //クロスライン
-        run_state = 4; //クロスラインを検出
-        digitalWrite(LED_PIN,HIGH);
-        return 4;
-      }
-    }
-    if (run_state == 4) {
-      if ((R2_Value + R1_Value + L1_Value + L2_Value) < 1200) {
-        run_state = 5;
-        digitalWrite(LED_PIN,LOW);
-        return 5;
-      }
-    }
-  }
-
-
-  return run_state;
-}
 
 void setup() {
   // put your setup code here, to run once:
@@ -284,22 +118,40 @@ void setup() {
 }
 
 void print_param(){
+  // 右のスイッチを１回押すと各種パラメータをシリアルプリントし、２回押すとパラメータ確認を終えて走行モード選択へ移行する
   while (1) {
     if (digitalRead(SW2_PIN) == LOW) {
       BUZZER_DRIVE(1, 100, 100);
       while (1) {
         get_AD();
-        Serial.printf("\n\r control = %d VDD=%dmV LL2=%d LL1=%d LR1=%d LR2=%d inside_offset=%d outside_offset=%d ML=%d MR=%d xline=%d  marker_check=%d CTRL=%d",
-                      (L1_Value - R1_Value - inside_offset) + 2 * (L2_Value - R2_Value - outside_offset),
-                      analogRead(POWER_PIN) * 9677 / 1000,
+        // Serial.printf("\n\r control = %d VDD=%dmV LL2=%d LL1=%d LR1=%d LR2=%d inside_offset=%d outside_offset=%d ML=%d MR=%d xline=%d  marker_check=%d CTRL=%d",
+        //               (L1_Value - R1_Value - inside_offset) + 2 * (L2_Value - R2_Value - outside_offset),
+        //               analogRead(POWER_PIN) * 9677 / 1000,
+        //               L2_Value, L1_Value, R1_Value, R2_Value,
+        //               (L1_Value - R1_Value), (L2_Value - R2_Value),
+        //               adc_read_value(PB_1, 10), adc_read_value(PB_0, 10),
+        //               L2_Value + R1_Value + L1_Value + R2_Value,
+        //               right_marker_check(),
+        //               L1_Value - R1_Value - inside_offset + 2 * (L2_Value - R2_Value - outside_offset)
+        //              );
+        line_control_i = (L1_Value - R1_Value - inside_offset) + 2 * (L2_Value - R2_Value - outside_offset);
+        right_marker_check();
+
+        Serial.printf("\n\r line_control = %d L2=%d L1=%d R1=%d R2=%d ML=%d MR=%d \n\r L1-R1-inside_offset=%d L2-R2-outside_offset=%d \n\r L2+L1+R1+R2=%d L1+R1=%d \n\r run_state=%d",
+                      line_control_i,
                       L2_Value, L1_Value, R1_Value, R2_Value,
-                      (L1_Value - R1_Value), (L2_Value - R2_Value),
-                      adc_read_value(PB_1, 10), adc_read_value(PB_0, 10),
-                      L2_Value + R1_Value + L1_Value + R2_Value,
-                      MarkerCheck(),
-                      L1_Value - R1_Value - inside_offset + 2 * (L2_Value - R2_Value - outside_offset)
-                     );
+                      ML_Value, MR_Value,
+                      L1_Value - R1_Value - inside_offset,    //０になることが理想
+                      L2_Value - R2_Value - outside_offset,   //０になることが理想
+                      L2_Value + L1_Value + R1_Value + R2_Value,
+                      L1_Value + R1_Value,
+                      run_state,
+                      );
+
+        Serial.printf("\n\r left_encorder_cnt=%d right_encorder_cnt=%d", leftEncoderCount, rightEncoderCount);
+
         delay(100);
+
         if (digitalRead(SW2_PIN) == LOW) {
           delay(200);
           break;
@@ -334,69 +186,227 @@ void initialize_run_mode() {
 
 }
 
-void left_marker_check(){
-  // マーカーが検出されていない状態から検出された状態に変わったとき
-  if (ML_Value > ML_THRESHOLD && !markerDetected) {
-    encoderSections[sectionIndex][0] = leftEncoderCount;
-    encoderSections[sectionIndex][1] = rightEncoderCount;
-    sectionIndex++;
-    
-    // エンコーダをリフレッシュ
-    leftEncoderCount = 0;
-    rightEncoderCount = 0;
-    
-    markerDetected = true; // マーカーが検出されたことを記録
-  } else if (ML_Value <= ML_THRESHOLD) {
-    markerDetected = false; // マーカーが検出されていないことを記録
+void count_encoder() {
+// エンコーダーカウントの割り込み処理関数
+  if (digitalRead(leftEncoderBPin) == HIGH) {
+    leftEncoderCount++;
+    // Serial.print("Left Encoder Count: ");
+    // Serial.println(leftEncoderCount);
+  }
+  if (digitalRead(rightEncoderBPin) == HIGH) {
+    rightEncoderCount++;
+    // Serial.print("Right Encoder Count: ");
+    // Serial.println(rightEncoderCount);
   }
 }
 
+void get_AD(void) {
+  R2_Value = analogRead(LINE_R2_PIN);
+  R1_Value = analogRead(LINE_R1_PIN);
+  L1_Value = analogRead(LINE_L1_PIN);
+  L2_Value = analogRead(LINE_L2_PIN);
+  ML_Value = adc_read_value(PB_1, 10);
+  MR_Value = adc_read_value(PB_0, 10);
 
-void loop() {
-  // put your main code here, to run repeatedly:
 
-  attachInterrupt(digitalPinToInterrupt(leftEncoderAPin), handleLeftEncoder, CHANGE);
-  attachInterrupt(digitalPinToInterrupt(rightEncoderAPin), handleRightEncoder, CHANGE);
+  // point1: black
+  // (L1,R1,L2,R2) = (131,133,121,45)
 
+  // point2: white
+  // (L1,R1,L2,R2) = (746,840,598,640)
 
-  get_AD();
-  //マーカーを検出?
-  MarkerCheck();
-  left_marker_check();
-  if (run_state == 1) {
-    BUZZER_DRIVE(1, 50, 50);
-  } else if (run_state == 7) {
-    BUZZER_DRIVE(2, 50, 50);
-    RUN_STOP();
-    initialize_run_mode();
+  // L1-R1_diff = -0.1496 * L1	+ 17.597
+  // L2-R2_diff = -0.2474 * L2	+ 105.93
+
+  //床の反射率が一定ではないため、特定の箇所で調査し、平均化したオフセットを算出
+  outside_offset = L2_Value * (-0.1579) + 113.47;
+  inside_offset = L1_Value * (-0.1352) + 15.276;
+}
+
+void debug_AD() {
+  Serial.printf("\n\r %d ML=%d,L2=%d L1=%d R1=%d,R2=%d,MR=%d",
+                run_state, ML_Value, L2_Value, L1_Value, R1_Value, R2_Value, MR_Value);
+}
+
+int right_marker_check(void) {
+  //      debug_AD();
+  //if ((MR_Value > (R2_Value*0.169+2.7488+30))  && (MR_Value > 90)) { //マーカーセンサアクティブ
+  if (LINE_COLOR == 1 ) {
+    if (MR_Value > MR_THRESHOLD){ //マーカーセンサアクティブ: start or goal
+      if (run_state == 0) {
+        run_state = 1;
+        digitalWrite(LED_PIN,HIGH);
+        return 1;
+      // } else if (run_state == 1) {
+      //   run_state = 2;
+      //   return 2;
+      } else if (run_state == 3) {
+        run_state = 7;
+        digitalWrite(LED_PIN,HIGH);
+        return 7;
+      } else if (run_state == 4) {
+        run_state = 6;
+        return 6;
+      } else if (run_state == 5) {
+        run_state = 6;
+        return 6;
+      } else if(run_state == 6){
+        run_state = 6;
+        return 6;      
+      }
+    }
+    else{
+      //マーカー未検出のとき
+      if (run_state == 1) {
+        run_state = 3;
+        return 3;
+      }
+
+      if (run_state == 6) {
+        run_state = 3;
+        return 3;
+      }
+    }
+
+    //クロスライン
+    if (run_state == 3) {
+      if ((R2_Value + R1_Value + L1_Value + L2_Value) > CROSS_THRESHOLD) { //クロスライン
+        run_state = 4; //クロスラインを検出
+        digitalWrite(LED_PIN,HIGH);
+        return 4;
+      }
+    }
+    if (run_state == 4) {
+      if ((R2_Value + R1_Value + L1_Value + L2_Value) < CROSS_THRESHOLD) {
+        run_state = 5;
+        digitalWrite(LED_PIN,LOW);
+        return 5;
+      }
+    }
   }
+
+
+  if (LINE_COLOR == -1 ) {
+    if (MR_Value < MR_THRESHOLD){ //マーカーセンサアクティブ: start or goal
+      if (run_state == 0) {
+        run_state = 1;
+        digitalWrite(LED_PIN,HIGH);
+        return 1;
+      // } else if (run_state == 1) {
+      //   run_state = 2;
+      //   return 2;
+      } else if (run_state == 3) {
+        run_state = 7;
+        digitalWrite(LED_PIN,HIGH);
+        return 7;
+      } else if (run_state == 4) {
+        run_state = 6;
+        return 6;
+      } else if (run_state == 5) {
+        run_state = 6;
+        return 6;
+      } else if(run_state == 6){
+        run_state = 6;
+        return 6;      
+      }
+    }
+    else{
+      //マーカー未検出のとき
+      if (run_state == 1) {
+        run_state = 3;
+        return 3;
+      }
+
+      if (run_state == 6) {
+        run_state = 3;
+        return 3;
+      }
+    }
+
+    //クロスライン
+    if (run_state == 3) {
+      if ((R2_Value + R1_Value + L1_Value + L2_Value) < CROSS_THRESHOLD) { //クロスライン
+        run_state = 4; //クロスラインを検出
+        digitalWrite(LED_PIN,HIGH);
+        return 4;
+      }
+    }
+    if (run_state == 4) {
+      if ((R2_Value + R1_Value + L1_Value + L2_Value) > CROSS_THRESHOLD) {
+        run_state = 5;
+        digitalWrite(LED_PIN,LOW);
+        return 5;
+      }
+    }
+  }
+
+
+  return run_state;
+}
+
+void left_marker_check(){
+  if (LINE_COLOR == 1){
+    // マーカーが検出されていない状態から検出された状態に変わったとき
+    if (ML_Value > ML_THRESHOLD && !markerDetected){
+      encoderSections[sectionIndex][0] = leftEncoderCount;
+      encoderSections[sectionIndex][1] = rightEncoderCount;
+      sectionIndex++;
+      
+      // エンコーダをリフレッシュ
+      leftEncoderCount = 0;
+      rightEncoderCount = 0;
+      
+      markerDetected = true; // マーカーが検出されたことを記録
+    } else if (ML_Value <= ML_THRESHOLD) {
+      markerDetected = false; // マーカーが検出されていないことを記録
+    }
+  }
+  else{
+    // マーカーが検出されていない状態から検出された状態に変わったとき
+    if (ML_Value < ML_THRESHOLD && !markerDetected){
+      encoderSections[sectionIndex][0] = leftEncoderCount;
+      encoderSections[sectionIndex][1] = rightEncoderCount;
+      sectionIndex++;
+      
+      // エンコーダをリフレッシュ
+      leftEncoderCount = 0;
+      rightEncoderCount = 0;
+      
+      markerDetected = true; // マーカーが検出されたことを記録
+    } else if (ML_Value >= ML_THRESHOLD) {
+      markerDetected = false; // マーカーが検出されていないことを記録
+    }
+  }
+}
+
+void detect_course_out(){
   if (LINE_COLOR == 1) {
     // スタートでもゴールでもない、ラインから外れた時にストップさせる
-    if (L1_Value + R1_Value < 300) {
+    if (L1_Value + R1_Value < COURSE_OUT_THRESHOLD) {
       course_out_count++;
     }
   }else{
     // スタートでもゴールでもない、ラインから外れた時にストップさせる
-    if (L1_Value + R1_Value > 1400) {
+    if (L1_Value + R1_Value > COURSE_OUT_THRESHOLD) {
       course_out_count++;
     }
   }
   if (course_out_count > 180){
     RUN_STOP();
   }
+}
 
-  // 以下からはライントレース
+void trace_line(){
   diff_control = line_control - line_control_before;
   line_control_before = line_control;
-  //ラインセンサの値から制御量を算出する、80：ラインからのオフセット（マーカ検出の微調整のため）
+  //ラインセンサの値から制御量を算出する、80：ラインから横方向へのオフセット（マーカ検出の微調整のため）
   // line_control = (L1_Value - R1_Value - inside_offset + 80) + 2 * (L2_Value - R2_Value - outside_offset + 80);
   line_control = (L1_Value - R1_Value - inside_offset) + 2 * (L2_Value - R2_Value - outside_offset);
-
 
   // スタート時の速度を抑える（急加速により不安定になるのを防ぐため）
   // SLOW_TIME秒後に、pwm_max = PWM_MAXとなるように計算する
   if (cnt <= SLOW_TIME){
-    pwm_max = PWM_INIT + (PWM_MAX - PWM_INIT) / SLOW_TIME * cnt;
+    pwm_max = PWM_INIT + (float)(PWM_MAX - PWM_INIT) / SLOW_TIME * cnt;
     cnt++;
   }
 
@@ -424,32 +434,44 @@ void loop() {
   // PWM_L_Value = 103*255/103;
   
 
-  PWM_L_Value = int(PWM_L_Value);
-  PWM_R_Value = int(PWM_R_Value);
-
-
-  // Serial.printf("\n\r PWM_L_VALUE=%d,PWM_R_VALUE=%d",
-  //               int(PWM_L_Value), int(PWM_R_Value));
-  
-  digitalWrite(DIR_L_PIN, CW_L);//モーター前進設定
-  digitalWrite(DIR_R_PIN, CW_R);//モーター前進設定
-
-  // if (PWM_L_Value > PWM_LIMIT) {
-  //   PWM_L_Value = PWM_LIMIT; //モーター制御値上下ガード処理
-  // }
-  if (PWM_L_Value <= 0) {
+  if (PWM_L_Value <= PWM_MIN) {
     PWM_L_Value = 0; //モーター制御値上下ガード処理
   }
 
-  // if (PWM_R_Value > PWM_LIMIT) {
-  //   PWM_R_Value = PWM_LIMIT; //モーター制御値上下ガード処理
-  // }
-  if (PWM_R_Value <= 0) {
+  if (PWM_R_Value <= PWM_MIN) {
     PWM_R_Value = 0; //モーター制御値上下ガード処理
   }
 
-  analogWrite(PWM_L_PIN, PWM_L_Value);
-  analogWrite(PWM_R_PIN, PWM_R_Value);
+  PWM_L_Value = int(PWM_L_Value);
+  PWM_R_Value = int(PWM_R_Value);
+  digitalWrite(DIR_L_PIN, CW_L);//モーター前進設定
+  digitalWrite(DIR_R_PIN, CW_R);//モーター前進設定
+  analogWrite(PWM_L_PIN, PWM_L_Value);//モーターPWM設定
+  analogWrite(PWM_R_PIN, PWM_R_Value);//モーターPWM設定
+}
+
+void loop() {
+  // put your main code here, to run repeatedly:
+
+  // エンコーダの変化を検出したときに割り込みでエンコーダカウントを行う
+  attachInterrupt(digitalPinToInterrupt(leftEncoderAPin), count_encoder, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(rightEncoderAPin), count_encoder, CHANGE);
+
+  get_AD();
+  right_marker_check();
+  left_marker_check();
+  detect_course_out();
+  trace_line();
+
+  // スタート時にブザーを鳴らす
+  // ゴール時にぶらーを鳴らし、停止する。走行モードを初期化して２回目走行を可能な状態にする
+  if (run_state == 1) {
+    BUZZER_DRIVE(1, 50, 50);
+  } else if (run_state == 7) {
+    BUZZER_DRIVE(2, 50, 50);
+    RUN_STOP();
+    initialize_run_mode();
+  }
 
   delay(1);
 }
