@@ -12,11 +12,11 @@
 #define MAX_SECTIONS 100  // 最大区間数を定義
 
 // setting parameters
-float Kp = 0.2;
-float Kd = 0.2;
-int PWM_MAX = 140; //max:255
+float Kp = 1.0;
+float Kd = 0.0;
+int PWM_MAX = 60; //max:255
 const int PWM_MIN = 20;
-const int PWM_MAX_FIRST = 80; //1回目走行でのPWM_MAX（コース形状計測用）
+const int PWM_MAX_FIRST = 40; //1回目走行でのPWM_MAX（コース形状計測用）
 const int PWM_INIT = 20;
 const int SLOW_TIME = 200;
 float pwm_max = PWM_INIT;
@@ -118,6 +118,12 @@ void setup() {
   Serial.begin(9600);
 
   // print_param();
+
+    // 初期化
+  for (int i=0; i<MAX_SECTIONS; i++){
+    right_to_left_ratio_list[i] = 1.0;
+    reduction_ratio_list[i] = 1.0;
+  }
   
   initialize_run_mode();
 }
@@ -129,16 +135,6 @@ void print_param(){
       BUZZER_DRIVE(1, 100, 100);
       while (1) {
         get_AD();
-        // Serial.printf("\n\r control = %d VDD=%dmV LL2=%d LL1=%d LR1=%d LR2=%d inside_offset=%d outside_offset=%d ML=%d MR=%d xline=%d  marker_check=%d CTRL=%d",
-        //               (L1_Value - R1_Value - inside_offset) + 2 * (L2_Value - R2_Value - outside_offset),
-        //               analogRead(POWER_PIN) * 9677 / 1000,
-        //               L2_Value, L1_Value, R1_Value, R2_Value,
-        //               (L1_Value - R1_Value), (L2_Value - R2_Value),
-        //               adc_read_value(PB_1, 10), adc_read_value(PB_0, 10),
-        //               L2_Value + R1_Value + L1_Value + R2_Value,
-        //               right_marker_check(),
-        //               L1_Value - R1_Value - inside_offset + 2 * (L2_Value - R2_Value - outside_offset)
-        //              );
         int line_control_i = (L1_Value - R1_Value - inside_offset) + 2 * (L2_Value - R2_Value - outside_offset);
         right_marker_check();
 
@@ -154,6 +150,7 @@ void print_param(){
                       );
 
         Serial.printf("\n\r left_encorder_cnt=%d right_encorder_cnt=%d", leftEncoderCount, rightEncoderCount);
+        Serial.printf("\n\r PWM_L_Value=%d PWM_R_Value=%d", PWM_L_Value, PWM_R_Value);
 
         delay(100);
 
@@ -350,30 +347,6 @@ int right_marker_check(void) {
   return run_state;
 }
 
-void calc_ratio(){
-  // 初期化
-  for (int i=0; i<MAX_SECTIONS; i++){
-    right_to_left_ratio_list[i] = 1;
-    reduction_ratio_list[i] = 1;
-  }
-
-
-  // ２回目以降の走行では前回走行で測定したエンコーダの値から左右のPWM速度比を設定しておく。そのためのパラメータをここでは計算しておき、trace_lineで使用する
-  for (int section_i=0; section_i<MAX_SECTIONS; section_i++){
-    if (encoderSections[section_i][0] != 0){
-      right_to_left_ratio_list[section_i] = (float)encoderSections[section_i][1] / encoderSections[section_i][0];
-
-      // カーブが急な時は最大速度を落とすための減速比を計算
-      // 左右の速度比と減速比の対応関係を適当に一次関数で表現した
-      if (right_to_left_ratio_list[section_i] < 1){
-        reduction_ratio_list[section_i] = k_reduce * right_to_left_ratio_list[section_i] + l_reduce;
-      }else{
-        reduction_ratio_list[section_i] = k_reduce / right_to_left_ratio_list[section_i] + l_reduce;
-      }
-    }
-  }
-}
-
 void left_marker_check(){
 
   if (LINE_COLOR == 1){
@@ -410,6 +383,23 @@ void left_marker_check(){
   }
 }
 
+void calc_ratio(){
+  // ２回目以降の走行では前回走行で測定したエンコーダの値から左右のPWM速度比を設定しておく。そのためのパラメータをここでは計算しておき、trace_lineで使用する
+  for (int section_i=0; section_i<MAX_SECTIONS; section_i++){
+    if (encoderSections[section_i][0] != 0){
+      right_to_left_ratio_list[section_i] = (float)encoderSections[section_i][1] / encoderSections[section_i][0];
+
+      // カーブが急な時は最大速度を落とすための減速比を計算
+      // 左右の速度比と減速比の対応関係を適当に一次関数で表現した
+      if (right_to_left_ratio_list[section_i] < 1.0){
+        reduction_ratio_list[section_i] = k_reduce * right_to_left_ratio_list[section_i] + l_reduce;
+      }else{
+        reduction_ratio_list[section_i] = k_reduce / right_to_left_ratio_list[section_i] + l_reduce;
+      }
+    }
+  }
+}
+
 void detect_course_out(){
   if (LINE_COLOR == 1) {
     // スタートでもゴールでもない、ラインから外れた時にストップさせる
@@ -428,8 +418,8 @@ void detect_course_out(){
 }
 
 void trace_line(){
-  float pwm_max_L;
-  float pwm_max_R;
+  float pwm_max_L=80;
+  float pwm_max_R=80;
 
   diff_control = line_control - line_control_before;
   line_control_before = line_control;
@@ -446,12 +436,26 @@ void trace_line(){
 
   // カーブの曲率によって決まる減速比に応じて最大速度を変更
   pwm_max *= reduction_ratio_list[sectionIndex];
-  // カーブの曲率によって決まる左右比に応じて最大速度を変更
-  if (right_to_left_ratio_list[sectionIndex] < 1){
-    pwm_max_R = pwm_max_L * right_to_left_ratio_list[sectionIndex];
-  }else{  
-    pwm_max_L = pwm_max_R * right_to_left_ratio_list[sectionIndex];
+  pwm_max_L = pwm_max;
+  pwm_max_R = pwm_max;
+  
+  Serial.print("reduction_ratio_list[sectionIndex]=");
+  Serial.println(reduction_ratio_list[sectionIndex]);
+
+  Serial.print("pwm_max=");
+  Serial.println(pwm_max);
+
+  // カーブの曲率によって決まる左右比に応じて、左右の最大速度を変更
+  if (right_to_left_ratio_list[sectionIndex] < 1.0){
+    pwm_max_R = pwm_max * right_to_left_ratio_list[sectionIndex];
+  }else{
+    pwm_max_L = pwm_max * right_to_left_ratio_list[sectionIndex];
   }
+
+  Serial.print("pwm_max_L=");
+  Serial.println(pwm_max_L);
+  Serial.print("pwm_max_R=");
+  Serial.println(pwm_max_R);
 
   if (LINE_COLOR == 1){
     if (line_control > 0 ){
@@ -472,6 +476,11 @@ void trace_line(){
     }
   }
 
+  Serial.print("PWM_L_Value=");
+  Serial.println(PWM_L_Value);
+  Serial.print("PWM_R_Value=");
+  Serial.println(PWM_R_Value);
+
   // 【テスト用】直線状に走らせる
   // PWM_R_Value = 100*255/103;
   // PWM_L_Value = 103*255/103;
@@ -484,7 +493,7 @@ void trace_line(){
   if (PWM_R_Value <= PWM_MIN) {
     PWM_R_Value = 0; //モーター制御値上下ガード処理
   }
-
+  
   PWM_L_Value = int(PWM_L_Value);
   PWM_R_Value = int(PWM_R_Value);
   digitalWrite(DIR_L_PIN, CW_L);//モーター前進設定
@@ -508,13 +517,13 @@ void loop() {
 
   // スタート時にブザーを鳴らす
   // ゴール時にぶらーを鳴らし、停止する。走行モードを初期化して２回目走行を可能な状態にする
-  if (run_state == 1) {
-    BUZZER_DRIVE(1, 50, 50);
-  } else if (run_state == 7) {
-    BUZZER_DRIVE(2, 50, 50);
-    RUN_STOP();
-    initialize_run_mode();
-  }
+  // if (run_state == 1) {
+  //   BUZZER_DRIVE(1, 50, 50);
+  // } else if (run_state == 7) {
+  //   BUZZER_DRIVE(2, 50, 50);
+  //   RUN_STOP();
+  //   initialize_run_mode();
+  // }
 
   delay(1);
 }
