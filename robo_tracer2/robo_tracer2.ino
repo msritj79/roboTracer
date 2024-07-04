@@ -10,9 +10,9 @@
  *     
  */
 
-float Kp = 0.3;
+float Kp = 1;
 float Kd = 0.0;
-float pwm_max = 100;
+float pwm_max = 150;
 float pwm = 0;
 long Line_Controll_before = 0;
 long diff_control;
@@ -64,7 +64,7 @@ float PWM_R_Value = 80;
 float PWM_L_Value = 80;
 
 //ラインが白の場合:1、ラインが黒の場合-1
-int Line_signed = 1;
+int Line_signed = -1;
 
 //0:マーカー未検出、クロス未検出
 //1:Startマーカーを検出
@@ -73,7 +73,7 @@ int Line_signed = 1;
 //5:マーカー未検出、クロス未検出
 //6:ダミーマーカー通過中
 //7:ゴールマーカー検出
-int line_State = 0;
+int line_State = 3;
 
 void get_AD(void) {
   R2_Value = analogRead(LINE_R2_Pin);
@@ -84,8 +84,12 @@ void get_AD(void) {
   MR_Value = adc_read_value(PB_0, 10);
 
   //床の反射率が一定ではないため、特定の箇所で調査し、平均化したオフセットを算出
-  outside_offset = R2_Value * 0.1281 - 17.245;
-  inside_offset = R2_Value * 0.1379 + 26.743;
+  // L2-R2=-0.1579*L2+113.47
+  // L1-R1=-0.1352*L1+15.276
+  outside_offset = -0.1579 * L2_Value + 113.47;
+  inside_offset = -0.1352 * L1_Value + 15.276;
+  // outside_offset = R2_Value * 0.1281 - 17.245;
+  // inside_offset = R2_Value * 0.1379 + 26.743;
 }
 
 void debug_AD() {
@@ -250,7 +254,7 @@ void loop() {
   diff_control = Line_Controll - Line_Controll_before;
   Line_Controll_before = Line_Controll;
   //ラインセンサの値から制御量を算出する
-  Line_Controll = (L1_Value - R1_Value - inside_offset + 80) + 2 * (L2_Value - R2_Value - outside_offset + 80);
+  Line_Controll = (L1_Value - R1_Value - inside_offset) + 2 * (L2_Value - R2_Value - outside_offset);
 
   if (cnt <= 200) {
     if (cnt < pwm_max) {
@@ -260,11 +264,15 @@ void loop() {
   }
 
   if (Line_Controll > 0 ) {
-    PWM_L_Value = pwm - Line_signed * Line_Controll * Kp - diff_control * Kd ;
-    PWM_R_Value = pwm;
-  } else {
-    PWM_R_Value = pwm + Line_signed * Line_Controll * Kp + diff_control * Kd ;
+    // PWM_L_Value = pwm - Line_signed * Line_Controll * Kp - diff_control * Kd;
+    // PWM_R_Value = pwm;
     PWM_L_Value = pwm;
+    PWM_R_Value = pwm + Line_signed * Line_Controll * Kp - diff_control * Kd;
+  } else {
+    // PWM_R_Value = pwm + Line_signed * Line_Controll * Kp + diff_control * Kd;
+    // PWM_L_Value = pwm;
+    PWM_R_Value = pwm;
+    PWM_L_Value = pwm - Line_signed * Line_Controll * Kp + diff_control * Kd;
   }
   
 
@@ -294,9 +302,13 @@ void loop() {
   // } else {
   //   digitalWrite(DIR_L_Pin, CW_L);//モーター前進設定
   // }
+
   // PWM_L_Value = abs(PWM_L_Value);
-  if (PWM_L_Value > 255) {
-    PWM_L_Value = 255; //モーター制御値上下ガード処理
+  // if (PWM_L_Value > 255) {
+  //   PWM_L_Value = 255; //モーター制御値上下ガード処理
+  // }
+  if (PWM_L_Value > pwm_max) {
+    PWM_L_Value = pwm_max; //モーター制御値上下ガード処理
   }
   if (PWM_L_Value <= 0) {
     PWM_L_Value = 0; //モーター制御値上下ガード処理
@@ -313,8 +325,11 @@ void loop() {
 
   digitalWrite(DIR_R_Pin, CW_R);//モーター前進設定
 
-  if (PWM_R_Value > 255) {
-    PWM_R_Value = 255; //モーター制御値上下ガード処理
+  // if (PWM_R_Value > 255) {
+  //   PWM_R_Value = 255; //モーター制御値上下ガード処理
+  // }
+  if (PWM_R_Value > pwm_max) {
+    PWM_R_Value = pwm_max; //モーター制御値上下ガード処理
   }
   if (PWM_R_Value <= 0) {
     PWM_R_Value = 0; //モーター制御値上下ガード処理
