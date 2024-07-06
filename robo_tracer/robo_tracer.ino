@@ -17,6 +17,7 @@ float Kd = 2.0;  //2.0
 int PWM_MAX = 60; //70 max:255
 const int PWM_MIN = 20;
 const int PWM_MAX_FIRST = 60; //60 1回目走行でのPWM_MAX（コース形状計測用）
+const int PWM_MAX_SECOND = 80; //2回目走行でのPWM_MAX（コース形状計測用）
 const int PWM_INIT = 20;
 const int SLOW_TIME = 200;
 float pwm_max = PWM_INIT;
@@ -30,7 +31,7 @@ const int CROSS_THRESHOLD = 1500; // クロスライン検出（R2+R1+L1+L2）�
 const int COURSE_OUT_THRESHOLD = 350; // L1+R1 < thresholdのとき白ラインから外れてコースアウトと判断する
                                       // (白線,黒線)=(350,1400)
 
-float k_reduce = -0.1;
+float k_reduce = -0.5; //0.5で左右比が2:1のとき減速比0.5
 float l_reduce = 1.0;
 
 int course_out_count = 0;
@@ -129,7 +130,7 @@ void setup() {
     right_to_left_ratio_list[i] = 1.0;
     reduction_ratio_list[i] = 1.0;
   }
-  
+
   initialize_run_mode();
 }
 
@@ -174,12 +175,13 @@ void initialize_run_mode() {
     while(1){
       //左のスイッチを押したら、走行開始（２回目）
       if (digitalRead(SW1_PIN) == LOW) {
+        // PWM_MAX = PWM_MAX_SECOND;
+        PWM_MAX += 10;
         digitalWrite(LED_PIN, HIGH);
         get_AD();
         BUZZER_DRIVE(2, 70, 70);
         calc_ratio();
         sectionIndex = 0;
-        PWM_MAX += 10;
 
         break;
       }
@@ -198,17 +200,35 @@ void initialize_run_mode() {
 
 }
 
-void count_encoder() {
-// エンコーダーカウントの割り込み処理関数
+// void count_encoder() {
+// // エンコーダーカウントの割り込み処理関数
+//   if (digitalRead(leftEncoderAPin) == HIGH) {
+//     leftEncoderCount++;
+//     Serial.print("Left Encoder Count: ");
+//     Serial.println(leftEncoderCount);
+//   }
+//   if (digitalRead(rightEncoderAPin) == HIGH) {
+//     rightEncoderCount++;
+//     Serial.print("Right Encoder Count: ");
+//     Serial.println(rightEncoderCount);
+//   }
+// }
+
+// 左エンコーダーの割り込み処理関数
+void handleLeftEncoder() {
   if (digitalRead(leftEncoderBPin) == HIGH) {
     leftEncoderCount++;
-    // Serial.print("Left Encoder Count: ");
-    // Serial.println(leftEncoderCount);
+    Serial.print("Left Encoder Count: ");
+    Serial.println(leftEncoderCount);
   }
+}
+
+// 右エンコーダーの割り込み処理関数
+void handleRightEncoder() {
   if (digitalRead(rightEncoderBPin) == HIGH) {
     rightEncoderCount++;
-    // Serial.print("Right Encoder Count: ");
-    // Serial.println(rightEncoderCount);
+    Serial.print("Right Encoder Count: ");
+    Serial.println(rightEncoderCount);
   }
 }
 
@@ -406,7 +426,18 @@ void calc_ratio(){
         reduction_ratio_list[section_i] = k_reduce * (right_to_left_ratio_list[section_i] - 1.0) + l_reduce;
       }
     }
+
+    Serial.println(section_i);
+    Serial.print("reduction_ratio_list");
+    Serial.println(reduction_ratio_list[section_i]);
+    Serial.print("right_to_left_ratio_list");
+    Serial.println(right_to_left_ratio_list[section_i]);
+    Serial.print("encoderSectionsL");
+    Serial.println(encoderSections[section_i][0]);
+    Serial.print("encoderSectionsR");
+    Serial.println(encoderSections[section_i][1]);
   }
+
 }
 
 void detect_course_out(){
@@ -522,9 +553,12 @@ void loop() {
   // put your main code here, to run repeatedly:
 
   // エンコーダの変化を検出したときに割り込みでエンコーダカウントを行う
-  attachInterrupt(digitalPinToInterrupt(leftEncoderAPin), count_encoder, CHANGE);
-  attachInterrupt(digitalPinToInterrupt(rightEncoderAPin), count_encoder, CHANGE);
-
+  // attachInterrupt(digitalPinToInterrupt(leftEncoderAPin), count_encoder, CHANGE);
+  // attachInterrupt(digitalPinToInterrupt(rightEncoderAPin), count_encoder, CHANGE);
+  
+  attachInterrupt(digitalPinToInterrupt(leftEncoderAPin), handleLeftEncoder, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(rightEncoderAPin), handleRightEncoder, CHANGE);
+  
   get_AD();
   left_marker_check();
   detect_course_out();
@@ -579,6 +613,8 @@ void loop() {
     print_param();
   }
 
+  // Serial.print("PWM_MAX=");
+  // Serial.println(PWM_MAX);
   // Serial.print("run_state=");
   // Serial.println(run_state);
 
