@@ -22,16 +22,32 @@ const int SLOW_TIME = 200;
 float pwm_max = PWM_INIT;
 
 //ラインが白の場合:1、ラインが黒の場合-1
-const int LINE_COLOR = -1;
+const int LINE_COLOR = 1;
 
-const int ML_THRESHOLD = 200; // section用 左マーカーの閾値 (白線,黒線)=(70,200)
-const int MR_THRESHOLD = 200;  // run_state用 右マーカーの閾値 (白線,黒線)=(70,200)
-const int CROSS_THRESHOLD = 1000; // クロスライン検出（R2+R1+L1+L2）の閾値 (白線,黒線)=(1300,1000)
+const int ML_THRESHOLD = 70; // section用 左マーカーの閾値 (白線,黒線)=(70,200)
+const int MR_THRESHOLD = 70;  // run_state用 右マーカーの閾値 (白線,黒線)=(70,200)
+const int CROSS_THRESHOLD = 1300; // クロスライン検出（R2+R1+L1+L2）の閾値 (白線,黒線)=(1300,1000)
 const int COURSE_OUT_THRESHOLD = 300; // L1+R1 < thresholdのとき白ラインから外れてコースアウトと判断する
                                       // (白線,黒線)=(300,1400)
 
 float k_reduce = 0.2;
 float l_reduce = 0.8;
+
+int course_out_count = 0;
+
+bool is_setting_mode = false;
+
+//0:マーカー未検出、クロス未検出
+//1:Startマーカーを検出
+//3:マーカー未検出、クロス未検出（通常走行）
+//4:クロスライン通過中
+//5:マーカー未検出、クロス未検出
+//6:ダミーマーカー通過中
+//7:ゴールマーカー検出
+int run_state = 3;
+
+float PWM_R_Value = 80;
+float PWM_L_Value = 80;
 
 long encoderSections[MAX_SECTIONS][2]; // エンコーダ値を保存する配列（最大10区間と仮定）
 int sectionIndex = 0; // 現在の区間のインデックス
@@ -84,19 +100,6 @@ int CW_R  = LOW;
 int CCW_R = HIGH;
 int CW_L = HIGH;
 int CCW_L = LOW;
-float PWM_R_Value = 80;
-float PWM_L_Value = 80;
-
-int course_out_count = 0;
-
-//0:マーカー未検出、クロス未検出
-//1:Startマーカーを検出
-//3:マーカー未検出、クロス未検出（通常走行）
-//4:クロスライン通過中
-//5:マーカー未検出、クロス未検出
-//6:ダミーマーカー通過中
-//7:ゴールマーカー検出
-int run_state = 3;
 
 // エンコーダーの値を保存するための変数
 volatile long leftEncoderCount = 0;
@@ -439,11 +442,11 @@ void trace_line(){
   pwm_max_L = pwm_max;
   pwm_max_R = pwm_max;
   
-  Serial.print("reduction_ratio_list[sectionIndex]=");
-  Serial.println(reduction_ratio_list[sectionIndex]);
+  // Serial.print("reduction_ratio_list[sectionIndex]=");
+  // Serial.println(reduction_ratio_list[sectionIndex]);
 
-  Serial.print("pwm_max=");
-  Serial.println(pwm_max);
+  // Serial.print("pwm_max=");
+  // Serial.println(pwm_max);
 
   // カーブの曲率によって決まる左右比に応じて、左右の最大速度を変更
   if (right_to_left_ratio_list[sectionIndex] < 1.0){
@@ -452,10 +455,10 @@ void trace_line(){
     pwm_max_L = pwm_max * right_to_left_ratio_list[sectionIndex];
   }
 
-  Serial.print("pwm_max_L=");
-  Serial.println(pwm_max_L);
-  Serial.print("pwm_max_R=");
-  Serial.println(pwm_max_R);
+  // Serial.print("pwm_max_L=");
+  // Serial.println(pwm_max_L);
+  // Serial.print("pwm_max_R=");
+  // Serial.println(pwm_max_R);
 
   if (LINE_COLOR == 1){
     if (line_control > 0 ){
@@ -476,10 +479,10 @@ void trace_line(){
     }
   }
 
-  Serial.print("PWM_L_Value=");
-  Serial.println(PWM_L_Value);
-  Serial.print("PWM_R_Value=");
-  Serial.println(PWM_R_Value);
+  // Serial.print("PWM_L_Value=");
+  // Serial.println(PWM_L_Value);
+  // Serial.print("PWM_R_Value=");
+  // Serial.println(PWM_R_Value);
 
   // 【テスト用】直線状に走らせる
   // PWM_R_Value = 100*255/103;
@@ -487,19 +490,26 @@ void trace_line(){
   
 
   if (PWM_L_Value <= PWM_MIN) {
-    PWM_L_Value = 0; //モーター制御値上下ガード処理
+    PWM_L_Value = PWM_MIN; //モーター制御値上下ガード処理
   }
 
   if (PWM_R_Value <= PWM_MIN) {
-    PWM_R_Value = 0; //モーター制御値上下ガード処理
+    PWM_R_Value = PWM_MIN; //モーター制御値上下ガード処理
   }
   
   PWM_L_Value = int(PWM_L_Value);
   PWM_R_Value = int(PWM_R_Value);
+
+  if (is_setting_mode) {
+    PWM_L_Value = 0;
+    PWM_R_Value = 0;
+  }
+
   digitalWrite(DIR_L_PIN, CW_L);//モーター前進設定
   digitalWrite(DIR_R_PIN, CW_R);//モーター前進設定
   analogWrite(PWM_L_PIN, PWM_L_Value);//モーターPWM設定
   analogWrite(PWM_R_PIN, PWM_R_Value);//モーターPWM設定
+
 }
 
 void loop() {
@@ -524,6 +534,10 @@ void loop() {
   //   RUN_STOP();
   //   initialize_run_mode();
   // }
+
+  if (is_setting_mode){
+    print_param();
+  }
 
   delay(1);
 }
