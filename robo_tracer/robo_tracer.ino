@@ -11,12 +11,12 @@
  */
 #define MAX_SECTIONS 100  // 最大区間数を定義
 
-// setting parameters
+// setting parameters 0.05/2.0/2.0
 float Kp = 0.2;
-float Kd = 0.2;
-int PWM_MAX = 150; //max:255
+float Kd = 0.0;
+int PWM_MAX = 120; //max:255
 const int PWM_MIN = 20;
-const int PWM_MAX_FIRST = 100; //1回目走行でのPWM_MAX（コース形状計測用）
+const int PWM_MAX_FIRST = 80; //1回目走行でのPWM_MAX（コース形状計測用）
 const int PWM_INIT = 20;
 const int SLOW_TIME = 200;
 float pwm_max = PWM_INIT;
@@ -34,6 +34,8 @@ float k_reduce = 0.2;
 float l_reduce = 0.8;
 
 int course_out_count = 0;
+int CONTINUE_RUN_TIME = 10000;
+int continue_run_count = 0;
 
 bool is_setting_mode = false;
 
@@ -44,7 +46,7 @@ bool is_setting_mode = false;
 //5:マーカー未検出、クロス未検出
 //6:ダミーマーカー通過中
 //7:ゴールマーカー検出
-int run_state = 3;
+int run_state = 0;
 
 float PWM_R_Value = 80;
 float PWM_L_Value = 80;
@@ -176,6 +178,8 @@ void initialize_run_mode() {
         get_AD();
         BUZZER_DRIVE(2, 70, 70);
         calc_ratio();
+        sectionIndex = 0;
+
         break;
       }
 
@@ -185,6 +189,7 @@ void initialize_run_mode() {
         digitalWrite(LED_PIN, HIGH);
         get_AD();
         BUZZER_DRIVE(4, 70, 70); //４回ブザーを鳴らす
+        sectionIndex = 0;
         break;
       }
 
@@ -415,7 +420,7 @@ void detect_course_out(){
       course_out_count++;
     }
   }
-  if (course_out_count > 180){
+  if (course_out_count > 100){
     RUN_STOP();
   }
 }
@@ -527,17 +532,25 @@ void loop() {
 
   // スタート時にブザーを鳴らす
   // ゴール時にぶらーを鳴らし、停止する。走行モードを初期化して２回目走行を可能な状態にする
-  // if (run_state == 1) {
-  //   BUZZER_DRIVE(1, 50, 50);
-  // } else if (run_state == 7) {
-  //   BUZZER_DRIVE(2, 50, 50);
-  //   RUN_STOP();
-  //   initialize_run_mode();
-  // }
+  if (run_state == 1) {
+    BUZZER_DRIVE(1, 50, 50);
+  } else if (run_state == 7) {
+    pwm_max = 40;
+    BUZZER_DRIVE(2, 50, 50);
+    while(continue_run_count < CONTINUE_RUN_TIME){
+      trace_line();
+      continue_run_count++;
+    }
+    RUN_STOP();
+    initialize_run_mode();
+  }
 
   if (is_setting_mode){
     print_param();
   }
+
+  // Serial.print("run_state=");
+  // Serial.println(run_state);
 
   delay(1);
 }
