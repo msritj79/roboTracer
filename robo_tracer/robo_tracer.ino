@@ -12,11 +12,11 @@
 #define MAX_SECTIONS 100  // 最大区間数を定義
 
 // setting parameters 0.05/2.0/2.0
-float Kp = 0.15;
-float Kd = 2.0;
-int PWM_MAX = 100; //max:255
+float Kp = 0.15; //0.15
+float Kd = 2.0;  //2.0
+int PWM_MAX = 60; //70 max:255
 const int PWM_MIN = 20;
-const int PWM_MAX_FIRST = 80; //1回目走行でのPWM_MAX（コース形状計測用）80
+const int PWM_MAX_FIRST = 60; //60 1回目走行でのPWM_MAX（コース形状計測用）
 const int PWM_INIT = 20;
 const int SLOW_TIME = 200;
 float pwm_max = PWM_INIT;
@@ -30,8 +30,8 @@ const int CROSS_THRESHOLD = 1500; // クロスライン検出（R2+R1+L1+L2）�
 const int COURSE_OUT_THRESHOLD = 350; // L1+R1 < thresholdのとき白ラインから外れてコースアウトと判断する
                                       // (白線,黒線)=(350,1400)
 
-float k_reduce = 0.2;
-float l_reduce = 0.8;
+float k_reduce = -0.1;
+float l_reduce = 1.0;
 
 int course_out_count = 0;
 int CONTINUE_RUN_TIME = 100;
@@ -179,6 +179,7 @@ void initialize_run_mode() {
         BUZZER_DRIVE(2, 70, 70);
         calc_ratio();
         sectionIndex = 0;
+        PWM_MAX += 10;
 
         break;
       }
@@ -400,9 +401,9 @@ void calc_ratio(){
       // カーブが急な時は最大速度を落とすための減速比を計算
       // 左右の速度比と減速比の対応関係を適当に一次関数で表現した
       if (right_to_left_ratio_list[section_i] < 1.0){
-        reduction_ratio_list[section_i] = k_reduce * right_to_left_ratio_list[section_i] + l_reduce;
+        reduction_ratio_list[section_i] = k_reduce * (1.0 - right_to_left_ratio_list[section_i]) + l_reduce;
       }else{
-        reduction_ratio_list[section_i] = k_reduce / right_to_left_ratio_list[section_i] + l_reduce;
+        reduction_ratio_list[section_i] = k_reduce * (right_to_left_ratio_list[section_i] - 1.0) + l_reduce;
       }
     }
   }
@@ -433,7 +434,7 @@ void trace_line(){
   line_control_before = line_control;
   //ラインセンサの値から制御量を算出する、80：ラインから横方向へのオフセット（マーカ検出の微調整のため）
   // line_control = (L1_Value - R1_Value - inside_offset + 80) + 2 * (L2_Value - R2_Value - outside_offset + 80);
-  line_control = (L1_Value - R1_Value - inside_offset) + 2 * (L2_Value - R2_Value - outside_offset);
+  line_control = (L1_Value - R1_Value - inside_offset - 180) + 2 * (L2_Value - R2_Value - outside_offset - 180);
 
   // スタート時の速度を抑える（急加速により不安定になるのを防ぐため）
   // SLOW_TIME秒後に、pwm_max = PWM_MAXとなるように計算する
@@ -443,7 +444,7 @@ void trace_line(){
   }
 
   // カーブの曲率によって決まる減速比に応じて最大速度を変更
-  pwm_max *= reduction_ratio_list[sectionIndex];
+  // pwm_max *= reduction_ratio_list[sectionIndex];
   pwm_max_L = pwm_max;
   pwm_max_R = pwm_max;
   
@@ -540,7 +541,14 @@ void loop() {
   }
 
   if(continue_run_count > CONTINUE_RUN_TIME){
-    RUN_STOP();
+    analogWrite(PWM_L_PIN, 0);
+    analogWrite(PWM_R_PIN, 0);
+    // RUN_STOP();
+    run_state=0;
+    continue_run_count = 0;
+    course_out_count = 0;
+    continue_run_count = 0;
+    initialize_run_mode();
   }
 
   
