@@ -12,11 +12,11 @@
 #define MAX_SECTIONS 100  // 最大区間数を定義
 
 // setting parameters 0.05/2.0/2.0
-float Kp = 0.2;
-float Kd = 0.0;
-int PWM_MAX = 120; //max:255
+float Kp = 0.15;
+float Kd = 2.0;
+int PWM_MAX = 100; //max:255
 const int PWM_MIN = 20;
-const int PWM_MAX_FIRST = 80; //1回目走行でのPWM_MAX（コース形状計測用）
+const int PWM_MAX_FIRST = 80; //1回目走行でのPWM_MAX（コース形状計測用）80
 const int PWM_INIT = 20;
 const int SLOW_TIME = 200;
 float pwm_max = PWM_INIT;
@@ -34,7 +34,7 @@ float k_reduce = 0.2;
 float l_reduce = 0.8;
 
 int course_out_count = 0;
-int CONTINUE_RUN_TIME = 10000;
+int CONTINUE_RUN_TIME = 100;
 int continue_run_count = 0;
 
 bool is_setting_mode = false;
@@ -467,11 +467,11 @@ void trace_line(){
 
   if (LINE_COLOR == 1){
     if (line_control > 0 ){
-      PWM_L_Value = pwm_max_L - LINE_COLOR * (line_control * Kp - diff_control * Kd);
+      PWM_L_Value = pwm_max_L - LINE_COLOR * (line_control * Kp + diff_control * Kd);
       PWM_R_Value = pwm_max_R;
     }else{
       PWM_L_Value = pwm_max_L;
-      PWM_R_Value = pwm_max_R + LINE_COLOR * (line_control * Kp - diff_control * Kd);
+      PWM_R_Value = pwm_max_R + LINE_COLOR * (line_control * Kp + diff_control * Kd);
     }
   }
   else if (LINE_COLOR == -1){
@@ -525,25 +525,47 @@ void loop() {
   attachInterrupt(digitalPinToInterrupt(rightEncoderAPin), count_encoder, CHANGE);
 
   get_AD();
-  right_marker_check();
   left_marker_check();
   detect_course_out();
   trace_line();
+  right_marker_check();
 
   // スタート時にブザーを鳴らす
   // ゴール時にぶらーを鳴らし、停止する。走行モードを初期化して２回目走行を可能な状態にする
   if (run_state == 1) {
     BUZZER_DRIVE(1, 50, 50);
-  } else if (run_state == 7) {
-    pwm_max = 40;
-    BUZZER_DRIVE(2, 50, 50);
-    while(continue_run_count < CONTINUE_RUN_TIME){
-      trace_line();
-      continue_run_count++;
-    }
-    RUN_STOP();
-    initialize_run_mode();
   }
+  if (run_state == 7) {
+    continue_run_count++;
+  }
+
+  if(continue_run_count > CONTINUE_RUN_TIME){
+    RUN_STOP();
+  }
+
+  
+
+  // if (run_state == 7) {
+  //   pwm_max = 20;
+  //   analogWrite(PWM_L_PIN, 20);
+  //   analogWrite(PWM_R_PIN, 20);
+  //   BUZZER_DRIVE(2, 50, 50);
+  //   while(continue_run_count < CONTINUE_RUN_TIME){
+  //     get_AD();
+  //     trace_line();
+  //     detect_course_out();
+  //     continue_run_count++;
+  //     delay(1);
+  //   }
+  //   // RUN_STOP();
+  //   // digitalWrite(LED_Pin, LOW);
+  //   analogWrite(PWM_L_PIN, 0);
+  //   analogWrite(PWM_R_PIN, 0);
+  //   BUZZER_DRIVE(2, 50, 50);
+  //   // analogWrite(PWM_L_Pin, 0);
+  //   // analogWrite(PWM_R_Pin, 0);
+  //   initialize_run_mode();
+  // }
 
   if (is_setting_mode){
     print_param();
