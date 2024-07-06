@@ -12,11 +12,11 @@
 #define MAX_SECTIONS 100  // 最大区間数を定義
 
 // setting parameters
-float Kp = 1.0;
-float Kd = 0.0;
-int PWM_MAX = 60; //max:255
+float Kp = 0.2;
+float Kd = 0.2;
+int PWM_MAX = 150; //max:255
 const int PWM_MIN = 20;
-const int PWM_MAX_FIRST = 40; //1回目走行でのPWM_MAX（コース形状計測用）
+const int PWM_MAX_FIRST = 100; //1回目走行でのPWM_MAX（コース形状計測用）
 const int PWM_INIT = 20;
 const int SLOW_TIME = 200;
 float pwm_max = PWM_INIT;
@@ -26,9 +26,9 @@ const int LINE_COLOR = 1;
 
 const int ML_THRESHOLD = 70; // section用 左マーカーの閾値 (白線,黒線)=(70,200)
 const int MR_THRESHOLD = 70;  // run_state用 右マーカーの閾値 (白線,黒線)=(70,200)
-const int CROSS_THRESHOLD = 1300; // クロスライン検出（R2+R1+L1+L2）の閾値 (白線,黒線)=(1300,1000)
-const int COURSE_OUT_THRESHOLD = 300; // L1+R1 < thresholdのとき白ラインから外れてコースアウトと判断する
-                                      // (白線,黒線)=(300,1400)
+const int CROSS_THRESHOLD = 1500; // クロスライン検出（R2+R1+L1+L2）の閾値 (白線,黒線)=(1500,1000)
+const int COURSE_OUT_THRESHOLD = 350; // L1+R1 < thresholdのとき白ラインから外れてコースアウトと判断する
+                                      // (白線,黒線)=(350,1400)
 
 float k_reduce = 0.2;
 float l_reduce = 0.8;
