@@ -15,7 +15,8 @@
 float Kp = 0.15; //0.15
 float Kd = 2.0;  //2.0
 int PWM_MAX = 60; //70 max:255
-const int PWM_MIN = 20;
+const int PWM_MIN = 10;
+const int PWM_MAX_MIN = 30;
 const int PWM_MAX_FIRST = 60; //60 1回目走行でのPWM_MAX（コース形状計測用）
 const int PWM_MAX_SECOND = 80; //2回目走行でのPWM_MAX（コース形状計測用）
 const int PWM_INIT = 20;
@@ -31,7 +32,7 @@ const int CROSS_THRESHOLD = 1500; // クロスライン検出（R2+R1+L1+L2）�
 const int COURSE_OUT_THRESHOLD = 350; // L1+R1 < thresholdのとき白ラインから外れてコースアウトと判断する
                                       // (白線,黒線)=(350,1400)
 
-float k_reduce = -0.5; //0.5で左右比が2:1のとき減速比0.5
+float k_reduce = -0.1; //0.5で左右比が2:1のとき減速比0.5
 float l_reduce = 1.0;
 
 int course_out_count = 0;
@@ -218,8 +219,6 @@ void initialize_run_mode() {
 void handleLeftEncoder() {
   if (digitalRead(leftEncoderBPin) == HIGH) {
     leftEncoderCount++;
-    Serial.print("Left Encoder Count: ");
-    Serial.println(leftEncoderCount);
   }
 }
 
@@ -227,8 +226,6 @@ void handleLeftEncoder() {
 void handleRightEncoder() {
   if (digitalRead(rightEncoderBPin) == HIGH) {
     rightEncoderCount++;
-    Serial.print("Right Encoder Count: ");
-    Serial.println(rightEncoderCount);
   }
 }
 
@@ -261,17 +258,12 @@ void debug_AD() {
 }
 
 int right_marker_check(void) {
-  //      debug_AD();
-  //if ((MR_Value > (R2_Value*0.169+2.7488+30))  && (MR_Value > 90)) { //マーカーセンサアクティブ
   if (LINE_COLOR == 1 ) {
     if (MR_Value > MR_THRESHOLD){ //マーカーセンサアクティブ: start or goal
       if (run_state == 0) {
         run_state = 1;
         digitalWrite(LED_PIN,HIGH);
         return 1;
-      // } else if (run_state == 1) {
-      //   run_state = 2;
-      //   return 2;
       } else if (run_state == 3) {
         run_state = 7;
         digitalWrite(LED_PIN,HIGH);
@@ -324,9 +316,6 @@ int right_marker_check(void) {
         run_state = 1;
         digitalWrite(LED_PIN,HIGH);
         return 1;
-      // } else if (run_state == 1) {
-      //   run_state = 2;
-      //   return 2;
       } else if (run_state == 3) {
         run_state = 7;
         digitalWrite(LED_PIN,HIGH);
@@ -427,15 +416,6 @@ void calc_ratio(){
       }
     }
 
-    Serial.println(section_i);
-    Serial.print("reduction_ratio_list");
-    Serial.println(reduction_ratio_list[section_i]);
-    Serial.print("right_to_left_ratio_list");
-    Serial.println(right_to_left_ratio_list[section_i]);
-    Serial.print("encoderSectionsL");
-    Serial.println(encoderSections[section_i][0]);
-    Serial.print("encoderSectionsR");
-    Serial.println(encoderSections[section_i][1]);
   }
 
 }
@@ -464,7 +444,6 @@ void trace_line(){
   diff_control = line_control - line_control_before;
   line_control_before = line_control;
   //ラインセンサの値から制御量を算出する、80：ラインから横方向へのオフセット（マーカ検出の微調整のため）
-  // line_control = (L1_Value - R1_Value - inside_offset + 80) + 2 * (L2_Value - R2_Value - outside_offset + 80);
   line_control = (L1_Value - R1_Value - inside_offset - 180) + 2 * (L2_Value - R2_Value - outside_offset - 180);
 
   // スタート時の速度を抑える（急加速により不安定になるのを防ぐため）
@@ -475,15 +454,13 @@ void trace_line(){
   }
 
   // カーブの曲率によって決まる減速比に応じて最大速度を変更
-  // pwm_max *= reduction_ratio_list[sectionIndex];
+  pwm_max *= reduction_ratio_list[sectionIndex];
+  if (pwm_max < PWM_MAX_MIN){
+    pwm_max = PWM_MAX_MIN;
+  }
   pwm_max_L = pwm_max;
   pwm_max_R = pwm_max;
   
-  // Serial.print("reduction_ratio_list[sectionIndex]=");
-  // Serial.println(reduction_ratio_list[sectionIndex]);
-
-  // Serial.print("pwm_max=");
-  // Serial.println(pwm_max);
 
   // カーブの曲率によって決まる左右比に応じて、左右の最大速度を変更
   if (right_to_left_ratio_list[sectionIndex] < 1.0){
@@ -491,11 +468,6 @@ void trace_line(){
   }else{
     pwm_max_L = pwm_max * right_to_left_ratio_list[sectionIndex];
   }
-
-  // Serial.print("pwm_max_L=");
-  // Serial.println(pwm_max_L);
-  // Serial.print("pwm_max_R=");
-  // Serial.println(pwm_max_R);
 
   if (LINE_COLOR == 1){
     if (line_control > 0 ){
@@ -515,16 +487,6 @@ void trace_line(){
       PWM_R_Value = pwm_max_R;
     }
   }
-
-  // Serial.print("PWM_L_Value=");
-  // Serial.println(PWM_L_Value);
-  // Serial.print("PWM_R_Value=");
-  // Serial.println(PWM_R_Value);
-
-  // 【テスト用】直線状に走らせる
-  // PWM_R_Value = 100*255/103;
-  // PWM_L_Value = 103*255/103;
-  
 
   if (PWM_L_Value <= PWM_MIN) {
     PWM_L_Value = PWM_MIN; //モーター制御値上下ガード処理
@@ -553,9 +515,6 @@ void loop() {
   // put your main code here, to run repeatedly:
 
   // エンコーダの変化を検出したときに割り込みでエンコーダカウントを行う
-  // attachInterrupt(digitalPinToInterrupt(leftEncoderAPin), count_encoder, CHANGE);
-  // attachInterrupt(digitalPinToInterrupt(rightEncoderAPin), count_encoder, CHANGE);
-  
   attachInterrupt(digitalPinToInterrupt(leftEncoderAPin), handleLeftEncoder, CHANGE);
   attachInterrupt(digitalPinToInterrupt(rightEncoderAPin), handleRightEncoder, CHANGE);
   
@@ -567,9 +526,9 @@ void loop() {
 
   // スタート時にブザーを鳴らす
   // ゴール時にぶらーを鳴らし、停止する。走行モードを初期化して２回目走行を可能な状態にする
-  if (run_state == 1) {
-    BUZZER_DRIVE(1, 50, 50);
-  }
+  // if (run_state == 1) {
+  //   BUZZER_DRIVE(1, 50, 50);
+  // }
   if (run_state == 7) {
     continue_run_count++;
   }
@@ -585,38 +544,9 @@ void loop() {
     initialize_run_mode();
   }
 
-  
-
-  // if (run_state == 7) {
-  //   pwm_max = 20;
-  //   analogWrite(PWM_L_PIN, 20);
-  //   analogWrite(PWM_R_PIN, 20);
-  //   BUZZER_DRIVE(2, 50, 50);
-  //   while(continue_run_count < CONTINUE_RUN_TIME){
-  //     get_AD();
-  //     trace_line();
-  //     detect_course_out();
-  //     continue_run_count++;
-  //     delay(1);
-  //   }
-  //   // RUN_STOP();
-  //   // digitalWrite(LED_Pin, LOW);
-  //   analogWrite(PWM_L_PIN, 0);
-  //   analogWrite(PWM_R_PIN, 0);
-  //   BUZZER_DRIVE(2, 50, 50);
-  //   // analogWrite(PWM_L_Pin, 0);
-  //   // analogWrite(PWM_R_Pin, 0);
-  //   initialize_run_mode();
-  // }
-
   if (is_setting_mode){
     print_param();
   }
-
-  // Serial.print("PWM_MAX=");
-  // Serial.println(PWM_MAX);
-  // Serial.print("run_state=");
-  // Serial.println(run_state);
 
   delay(1);
 }
