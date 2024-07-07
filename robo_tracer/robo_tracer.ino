@@ -180,11 +180,10 @@ void initialize_run_mode() {
       //左のスイッチを押したら、走行開始（２回目）
       if (digitalRead(SW1_PIN) == LOW) {
         is_first_run = false;
-        // PWM_MAX = PWM_MAX_SECOND;
         if (has_course_out == false){
           PWM_MAX += 20;
         }else{
-          PWM_MAX -= 10;
+          PWM_MAX -= 30;
         }
         
         digitalWrite(LED_PIN, HIGH);
@@ -465,7 +464,6 @@ void detect_course_out(){
   if (course_out_reset_count > 500){
     course_out_count = 0;
     course_out_reset_count = 0;
-    // has_course_out = false;
   }
 }
 
@@ -583,7 +581,7 @@ void loop() {
     analogWrite(PWM_L_PIN, 0);
     analogWrite(PWM_R_PIN, 0);
     // RUN_STOP();
-    // has_course_out = false;
+    has_course_out = false;
     ready_to_rerun();
   }
 
