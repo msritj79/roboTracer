@@ -14,7 +14,7 @@
 // setting parameters 0.05/2.0/2.0
 float Kp = 0.15; //0.15
 float Kd = 2.0;  //2.0
-int PWM_MAX = 60; //70 max:255
+int PWM_MAX = 70; //70 max:255
 const int PWM_MIN = 10;
 const int PWM_MAX_MIN = 30;
 const int PWM_MAX_FIRST = 60; //60 1回目走行でのPWM_MAX（コース形状計測用）
@@ -26,20 +26,23 @@ float pwm_max = PWM_INIT;
 //ラインが白の場合:1、ラインが黒の場合-1
 const int LINE_COLOR = 1;
 
-const int ML_THRESHOLD = 70; // section用 左マーカーの閾値 (白線,黒線)=(70,200)
+const int ML_THRESHOLD = 20; // section用 左マーカーの閾値 (白線,黒線)=(70,200)
 const int MR_THRESHOLD = 70;  // run_state用 右マーカーの閾値 (白線,黒線)=(70,200)
 const int CROSS_THRESHOLD = 1500; // クロスライン検出（R2+R1+L1+L2）の閾値 (白線,黒線)=(1500,1000)
 const int COURSE_OUT_THRESHOLD = 350; // L1+R1 < thresholdのとき白ラインから外れてコースアウトと判断する
                                       // (白線,黒線)=(350,1400)
 
-float k_reduce = -0.1; //0.5で左右比が2:1のとき減速比0.5
+float k_reduce = -0.6; //0.5で左右比が2:1のとき減速比0.5
 float l_reduce = 1.0;
 
 int course_out_count = 0;
+int course_out_reset_count = 0;
 int CONTINUE_RUN_TIME = 100;
 int continue_run_count = 0;
 
 bool is_setting_mode = false;
+bool is_first_run = true;
+bool has_course_out = false;
 
 //0:マーカー未検出、クロス未検出
 //1:Startマーカーを検出
@@ -122,7 +125,7 @@ void setup() {
   pinMode(DIR_L_PIN, OUTPUT);
 
   LED_DRIVE(2, 100, 100);
-  Serial.begin(9600);
+  // Serial.begin(9600);
 
   // print_param();
 
@@ -176,24 +179,28 @@ void initialize_run_mode() {
     while(1){
       //左のスイッチを押したら、走行開始（２回目）
       if (digitalRead(SW1_PIN) == LOW) {
+        is_first_run = false;
         // PWM_MAX = PWM_MAX_SECOND;
-        PWM_MAX += 10;
+        if (has_course_out == false){
+          PWM_MAX += 20;
+        }else{
+          PWM_MAX -= 10;
+        }
+        
         digitalWrite(LED_PIN, HIGH);
         get_AD();
         BUZZER_DRIVE(2, 70, 70);
         calc_ratio();
-        sectionIndex = 0;
-
         break;
       }
 
       //右のスイッチを押したら、計測モードで走行開始（1回目）
       if (digitalRead(SW2_PIN) == LOW) {
+        is_first_run = true;
         PWM_MAX = PWM_MAX_FIRST; //ゆっくり走る
         digitalWrite(LED_PIN, HIGH);
         get_AD();
         BUZZER_DRIVE(4, 70, 70); //４回ブザーを鳴らす
-        sectionIndex = 0;
         break;
       }
 
@@ -370,17 +377,20 @@ void left_marker_check(){
   if (LINE_COLOR == 1){
     // マーカーが検出されていない状態から検出された状態に変わったとき
     if (ML_Value > ML_THRESHOLD && !markerDetected){
+      if (is_first_run == true){
       encoderSections[sectionIndex][0] = leftEncoderCount;
       encoderSections[sectionIndex][1] = rightEncoderCount;
-      sectionIndex++;
-      
       // エンコーダをリフレッシュ
       leftEncoderCount = 0;
       rightEncoderCount = 0;
-      
+      }
+
+      sectionIndex++;
       markerDetected = true; // マーカーが検出されたことを記録
+      // Serial.println("Left marker detected");
     } else if (ML_Value <= ML_THRESHOLD) {
       markerDetected = false; // マーカーが検出されていないことを記録
+      // Serial.println("Left marker UNUNUNdetected");
     }
   }
   else{
@@ -395,6 +405,7 @@ void left_marker_check(){
       rightEncoderCount = 0;
       
       markerDetected = true; // マーカーが検出されたことを記録
+
     } else if (ML_Value >= ML_THRESHOLD) {
       markerDetected = false; // マーカーが検出されていないことを記録
     }
@@ -416,6 +427,17 @@ void calc_ratio(){
       }
     }
 
+    // if (section_i < 10){
+    //   Serial.println(section_i);
+    //   Serial.print("reduction_ratio");
+    //   Serial.println(reduction_ratio_list[section_i]);
+    //   Serial.print("right_to_left_ratio");
+    //   Serial.println(right_to_left_ratio_list[section_i]);
+
+    // }
+
+
+
   }
 
 }
@@ -425,6 +447,8 @@ void detect_course_out(){
     // スタートでもゴールでもない、ラインから外れた時にストップさせる
     if (L1_Value + R1_Value < COURSE_OUT_THRESHOLD) {
       course_out_count++;
+    }else{
+      course_out_reset_count++;
     }
   }else{
     // スタートでもゴールでもない、ラインから外れた時にストップさせる
@@ -432,9 +456,28 @@ void detect_course_out(){
       course_out_count++;
     }
   }
-  if (course_out_count > 100){
-    RUN_STOP();
+  if (course_out_count > 800){
+    analogWrite(PWM_L_PIN, 0);
+    analogWrite(PWM_R_PIN, 0);
+    has_course_out = true;
+    ready_to_rerun();
   }
+  if (course_out_reset_count > 500){
+    course_out_count = 0;
+    course_out_reset_count = 0;
+    // has_course_out = false;
+  }
+}
+
+void ready_to_rerun(){
+  run_state=0;
+  continue_run_count = 0;
+  course_out_count = 0;
+  continue_run_count = 0;
+  cnt = 1;
+  sectionIndex = 0;
+  markerDetected = false;
+  initialize_run_mode();
 }
 
 void trace_line(){
@@ -454,7 +497,10 @@ void trace_line(){
   }
 
   // カーブの曲率によって決まる減速比に応じて最大速度を変更
-  pwm_max *= reduction_ratio_list[sectionIndex];
+  if (sectionIndex > 0){
+    pwm_max = PWM_MAX * reduction_ratio_list[sectionIndex];
+  }
+
   if (pwm_max < PWM_MAX_MIN){
     pwm_max = PWM_MAX_MIN;
   }
@@ -462,12 +508,12 @@ void trace_line(){
   pwm_max_R = pwm_max;
   
 
-  // カーブの曲率によって決まる左右比に応じて、左右の最大速度を変更
-  if (right_to_left_ratio_list[sectionIndex] < 1.0){
-    pwm_max_R = pwm_max * right_to_left_ratio_list[sectionIndex];
-  }else{
-    pwm_max_L = pwm_max * right_to_left_ratio_list[sectionIndex];
-  }
+  // // カーブの曲率によって決まる左右比に応じて、左右の最大速度を変更
+  // if (right_to_left_ratio_list[sectionIndex] <= 1.0){
+  //   pwm_max_R = pwm_max * right_to_left_ratio_list[sectionIndex];
+  // }else{
+  //   pwm_max_L = pwm_max * right_to_left_ratio_list[sectionIndex];
+  // }
 
   if (LINE_COLOR == 1){
     if (line_control > 0 ){
@@ -537,11 +583,8 @@ void loop() {
     analogWrite(PWM_L_PIN, 0);
     analogWrite(PWM_R_PIN, 0);
     // RUN_STOP();
-    run_state=0;
-    continue_run_count = 0;
-    course_out_count = 0;
-    continue_run_count = 0;
-    initialize_run_mode();
+    // has_course_out = false;
+    ready_to_rerun();
   }
 
   if (is_setting_mode){
